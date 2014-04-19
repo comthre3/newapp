@@ -1,5 +1,5 @@
 # One Month Rails
 This is my newapp sample aplication for
-[*One Month Rails*] (http://onemonthrails.com)
+[*Snaprint Ruby*] (http://snaprint.com.kw)
 
-by [Mattan]
+by [Ahmed] (http://snaprint.com.kw)
