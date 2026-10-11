@@ -1,0 +1,44 @@
+
+=== EXP 3: what if the world is NOT the one the rules assumed? bigger-team win rate (teams balanced on true skill) ===
+delta = true per-head effort loss (0 = no loafing, 0.07 = assumed, 0.11 = heavy). phi = share of the size effect driven by total team size even for benched players.
+
+split 4v3
+rule              phi             d=0       d=0.035        d=0.07        d=0.11
+R1_mean           0          70.8±0.6      63.5±0.7      54.0±0.7      39.0±0.7
+R2_mean_sizeF     0          89.5±0.4      85.4±0.5      78.8±0.5      66.4±0.6
+R4_even           0          50.4±0.7      49.9±0.7      50.4±0.7      50.4±0.7
+R4_even           0.5        50.4±0.7      46.4±0.7      42.3±0.7      35.7±0.7
+R4_even           1          50.4±0.7      42.8±0.7      34.4±0.6      22.8±0.6
+R5_even_catchup   0          50.5±0.7      50.1±0.7      50.5±0.7      50.3±0.7
+R5_even_catchup   0.5        50.5±0.7      46.6±0.7      42.9±0.7      36.7±0.7
+R5_even_catchup   1          50.5±0.7      43.2±0.7      35.3±0.6      24.1±0.6
+
+split 5v4
+rule              phi             d=0       d=0.035        d=0.07        d=0.11
+R1_mean           0          68.3±0.6      59.1±0.6      46.4±0.6      26.6±0.5
+R2_mean_sizeF     0          91.0±0.3      86.3±0.4      77.1±0.5      58.0±0.6
+R4_even           0          50.2±0.6      49.9±0.6      49.9±0.6      50.1±0.6
+R4_even           0.5        50.2±0.6      45.6±0.6      39.8±0.6      31.4±0.6
+R4_even           1          50.2±0.6      41.2±0.6      30.0±0.6      16.1±0.4
+R5_even_catchup   0          50.3±0.6      50.1±0.6      50.3±0.6      50.0±0.6
+R5_even_catchup   0.5        50.3±0.6      45.8±0.6      40.5±0.6      32.4±0.6
+R5_even_catchup   1          50.3±0.6      41.6±0.6      31.0±0.6      17.5±0.4
+
+split 7v5
+rule              phi             d=0       d=0.035        d=0.07        d=0.11
+R1_mean           0          81.2±0.5      59.7±0.7      25.6±0.6       1.5±0.1
+R2_mean_sizeF     0          96.8±0.2      88.7±0.4      61.8±0.6       9.6±0.3
+R4_even           0          50.0±0.6      49.3±0.6      49.5±0.6      49.7±0.6
+R4_even           0.5        50.0±0.6      39.0±0.6      26.4±0.5      10.2±0.3
+R4_even           1          50.0±0.6      29.2±0.6       9.4±0.3       0.5±0.1
+R5_even_catchup   0          50.1±0.6      49.4±0.6      49.6±0.6      49.8±0.6
+R5_even_catchup   0.5        50.1±0.6      39.6±0.6      27.4±0.5      11.7±0.4
+R5_even_catchup   1          50.1±0.6      30.1±0.6      10.9±0.3       0.9±0.1
+
+Spotter bonus sensitivity (R4_even, delta 0.07, phi 0): bigger-team win rate vs beta
+beta=0      4v3: 49.8±0.6   5v4: 49.9±0.5   7v5: 49.9±0.5   
+beta=0.02   4v3: 55.7±0.6   5v4: 57.0±0.5   7v5: 57.3±0.5   
+beta=0.05   4v3: 64.4±0.5   5v4: 66.5±0.5   7v5: 67.7±0.5   
+beta=0.1    4v3: 76.4±0.5   5v4: 79.7±0.4   7v5: 81.5±0.4   
+
+[done in 65.8s]

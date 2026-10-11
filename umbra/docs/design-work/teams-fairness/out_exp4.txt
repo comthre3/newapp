@@ -1,0 +1,23 @@
+
+=== EXP 4: does the assignment method matter for lopsided rooms? (rule R5, world default) ===
+per-roster win prob of the bigger team: mean, noise-corrected SD (points), blowout share (<35% or >65%)
+
+4v3
+ALT_JOIN    bigger-team win 49.6±3.8   roster SD 33.2 pts   blowout 75.0%
+RANDOM      bigger-team win 56.5±3.8   roster SD 33.7 pts   blowout 79.7%
+OPT_PRIOR   bigger-team win 51.6±3.7   roster SD 33.0 pts   blowout 77.7%
+OPT_WARM    bigger-team win 51.5±3.2   roster SD 28.2 pts   blowout 67.3%
+
+5v4
+ALT_JOIN    bigger-team win 52.8±3.9   roster SD 34.0 pts   blowout 78.7%
+RANDOM      bigger-team win 52.2±3.9   roster SD 34.8 pts   blowout 81.3%
+OPT_PRIOR   bigger-team win 50.8±3.8   roster SD 33.5 pts   blowout 79.3%
+OPT_WARM    bigger-team win 49.5±3.3   roster SD 28.7 pts   blowout 68.7%
+
+6v6
+ALT_JOIN    bigger-team win 50.7±4.0   roster SD 35.0 pts   blowout 80.7%
+RANDOM      bigger-team win 47.8±3.8   roster SD 33.9 pts   blowout 78.3%
+OPT_PRIOR   bigger-team win 52.0±3.9   roster SD 34.1 pts   blowout 79.3%
+OPT_WARM    bigger-team win 49.7±3.3   roster SD 29.3 pts   blowout 67.7%
+
+[done in 10.8s]

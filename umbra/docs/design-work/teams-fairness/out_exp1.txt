@@ -1,0 +1,45 @@
+
+=== EXP 1: how well does each assignment method balance the two teams? ===
+(true skill gap = |mean true skill A - mean true skill B| in par units; adult par = 1.0)
+
+4v3 (N=7), 1500 random rooms
+method                mean gap  gap>0.10  age excess  kid-only team  avg moved
+ALT_JOIN                 0.165     62.5%        0.46           0.8%          -
+RANDOM                   0.166     61.7%        0.54           1.2%          -
+SNAKE_PRIOR              0.163     64.3%        0.12           0.0%          -
+OPT_PRIOR                0.149     58.3%        0.17           0.0%          -
+OPT_PRIOR+REDRAFT        0.119     50.3%        0.16           0.0%       1.34
+OPT_WARM                 0.120     50.7%        0.12           0.0%          -
+ORACLE                   0.018      0.7%        0.15           0.1%          -
+
+5v4 (N=9), 1500 random rooms
+method                mean gap  gap>0.10  age excess  kid-only team  avg moved
+ALT_JOIN                 0.146     56.2%        0.69           0.5%          -
+RANDOM                   0.145     57.1%        0.68           0.0%          -
+SNAKE_PRIOR              0.135     54.4%        0.18           0.0%          -
+OPT_PRIOR                0.134     55.3%        0.16           0.0%          -
+OPT_PRIOR+REDRAFT        0.104     43.5%        0.18           0.0%       1.33
+OPT_WARM                 0.099     41.5%        0.14           0.0%          -
+ORACLE                   0.012      0.3%        0.16           0.0%          -
+
+6v5 (N=11), 1500 random rooms
+method                mean gap  gap>0.10  age excess  kid-only team  avg moved
+ALT_JOIN                 0.131     52.9%        0.81           0.1%          -
+RANDOM                   0.132     53.3%        0.91           0.0%          -
+SNAKE_PRIOR              0.123     52.0%        0.26           0.0%          -
+OPT_PRIOR                0.122     51.1%        0.18           0.0%          -
+OPT_PRIOR+REDRAFT        0.095     40.2%        0.18           0.0%       1.35
+OPT_WARM                 0.093     38.8%        0.16           0.0%          -
+ORACLE                   0.011      0.0%        0.17           0.0%          -
+
+6v6 (N=12), 1500 random rooms
+method                mean gap  gap>0.10  age excess  kid-only team  avg moved
+ALT_JOIN                 0.124     52.5%        0.87           0.1%          -
+RANDOM                   0.129     52.9%        1.05           0.0%          -
+SNAKE_PRIOR              0.113     47.5%        0.24           0.0%          -
+OPT_PRIOR                0.113     47.3%        0.13           0.0%          -
+OPT_PRIOR+REDRAFT        0.088     36.1%        0.12           0.0%       1.33
+OPT_WARM                 0.088     35.7%        0.13           0.0%          -
+ORACLE                   0.011      0.0%        0.12           0.0%          -
+
+[done in 2.7s]

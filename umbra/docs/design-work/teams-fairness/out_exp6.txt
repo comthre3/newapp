@@ -1,0 +1,7 @@
+
+=== EXP 6: three teams (4/4/3, N=11): share of sessions won by each team (fair = 33.3% each) ===
+R0_naive_sum      team sizes 4/4/3 -> win share: 4-player 36.6%   4-player 36.6%   3-player 26.8%
+R1_mean           team sizes 4/4/3 -> win share: 4-player 34.3%   4-player 34.4%   3-player 31.3%
+R5_even_catchup   team sizes 4/4/3 -> win share: 4-player 33.6%   4-player 33.1%   3-player 33.2%
+
+[done in 35.6s]

@@ -1,0 +1,30 @@
+[world override: sigEps=0.5, skillSd=0.15]
+
+=== EXP 7: what reduces LOPSIDED rooms (as opposed to head-count bias)? realistic assignment, 4v3 and 5v4 and 4v4 control ===
+per-roster win prob of the bigger team: mean +/-CI | noise-corrected SD (points) | blowout share (<35% or >65%)
+
+4v4
+V0 R5 baseline: prior + 1 warm-up           51.3±1.0 | SD 21.7 | blowout 52.5%
+V1 + re-draft after round 1                 51.0±0.7 | SD 15.2 | blowout 37.3%
+V2 + 3 warm-up measurements (not 1)         51.1±1.0 | SD 21.0 | blowout 50.8%
+V3 + catch-up cap 0.20 (k 0.5)              51.2±1.0 | SD 21.2 | blowout 51.4%
+V4 + catch-up cap 0.30 (k 0.75)             51.2±0.9 | SD 20.3 | blowout 48.8%
+V5 = V1 + V2 + V3                           49.9±0.7 | SD 14.8 | blowout 36.4%
+
+4v3
+V0 R5 baseline: prior + 1 warm-up           48.5±1.0 | SD 20.8 | blowout 50.7%
+V1 + re-draft after round 1                 47.7±0.7 | SD 14.4 | blowout 35.9%
+V2 + 3 warm-up measurements (not 1)         49.3±0.9 | SD 19.7 | blowout 48.3%
+V3 + catch-up cap 0.20 (k 0.5)              48.6±0.9 | SD 20.3 | blowout 50.4%
+V4 + catch-up cap 0.30 (k 0.75)             48.5±0.9 | SD 19.7 | blowout 49.8%
+V5 = V1 + V2 + V3                           48.8±0.7 | SD 14.8 | blowout 35.6%
+
+5v4
+V0 R5 baseline: prior + 1 warm-up           49.0±1.0 | SD 20.7 | blowout 51.0%
+V1 + re-draft after round 1                 49.1±0.7 | SD 15.2 | blowout 36.5%
+V2 + 3 warm-up measurements (not 1)         48.3±0.9 | SD 19.8 | blowout 49.0%
+V3 + catch-up cap 0.20 (k 0.5)              49.0±0.9 | SD 20.2 | blowout 50.2%
+V4 + catch-up cap 0.30 (k 0.75)             49.1±0.9 | SD 19.5 | blowout 48.9%
+V5 = V1 + V2 + V3                           49.4±0.7 | SD 14.6 | blowout 34.8%
+
+[done in 25.3s]
