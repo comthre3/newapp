@@ -1,0 +1,24 @@
+{
+  "name": "umbra",
+  "version": "0.1.0",
+  "description": "Co-op shadow puzzle for a phone camera + projector",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/vision.test.js test/world.test.js test/server.test.js",
+    "e2e": "node test/e2e.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "qrcode-generator": "^2.0.4",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.0"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Umbra — a shadow puzzle game</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="landing">
+  <main>
+    <h1>UMBRA</h1>
+    <p class="lead">A co-op puzzle played with real shadows. One phone watches the projected picture; everyone else steers from their own phone.</p>
+    <div class="actions">
+      <a class="btn primary" href="/host.html">Host a game<small>the phone that is wired to the projector</small></a>
+      <form action="/play.html" method="get">
+        <input name="room" size="4" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" aria-label="Room code" required pattern="[A-Za-z]{4}">
+        <button class="big" type="submit">Join</button>
+      </form>
+      <a class="btn ghost" href="/host.html?sim=1">Try the simulator<small>no projector or camera needed</small></a>
+    </div>
+    <ol class="how">
+      <li><b>Project</b> the host page onto a wall (cast or cable). The host's camera watches it.</li>
+      <li><b>Shadows are solid.</b> Hold hands, books or cardboard in the beam to build ramps, bridges and walls for the orb.</li>
+      <li><b>Phones</b> nudge the orb, flip gravity and throw switches. Talk to each other!</li>
+    </ol>
+  </main>
+</body>
+</html>

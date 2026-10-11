@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#ffffff">
+  <title>Umbra Host</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="host">
+  <canvas id="stage"></canvas>
+  <canvas id="overlay"></canvas>
+
+  <!-- Lobby -->
+  <section id="lobby" class="ui card center lobby">
+    <div class="lcol">
+      <h1>UMBRA</h1>
+      <p class="tag">Shadows are solid. Build with your hands, steer with your phones.</p>
+      <div class="join">
+        <canvas id="qr" width="168" height="168" aria-label="QR code to join"></canvas>
+        <div class="joininfo">
+          <div class="label">Room code</div>
+          <div id="roomcode" class="code">····</div>
+          <div class="label">Scan, or open</div>
+          <div id="joinurl" class="url">…</div>
+          <div id="netstatus" class="status">Connecting…</div>
+        </div>
+      </div>
+    </div>
+    <div class="rcol">
+      <div class="label">Players</div>
+      <ul id="players" class="players"></ul>
+      <div class="row">
+        <button id="btn-camera">Set up camera</button>
+        <button id="btn-sim" class="ghost">Try the simulator</button>
+      </div>
+      <div id="camstatus" class="status">Camera: not set up yet</div>
+      <div class="row">
+        <label class="select">Level <select id="levelsel"></select></label>
+        <button id="btn-start" class="primary" disabled>Start ▶</button>
+      </div>
+      <p class="small" id="lobbytip">Point the phone's camera at the wall the projector lights up, then calibrate.</p>
+    </div>
+  </section>
+
+  <!-- Camera aiming -->
+  <section id="aim" class="ui panel bottom" hidden>
+    <p><b>Aim the camera.</b> Every edge of the bright picture must be visible. Keep it steady (prop the phone up) and hands out of the beam.</p>
+    <div class="row">
+      <button id="btn-calibrate" class="primary">Calibrate</button>
+      <button id="btn-aim-cancel" class="ghost">Cancel</button>
+    </div>
+  </section>
+
+  <!-- Calibration result / manual adjust -->
+  <section id="result" class="ui panel bottom" hidden>
+    <p id="result-msg"></p>
+    <div class="row">
+      <button id="btn-accept" class="primary">Looks right</button>
+      <button id="btn-adjust" class="ghost">Adjust corners</button>
+      <button id="btn-retry" class="ghost">Retry</button>
+    </div>
+  </section>
+
+  <!-- Level cleared -->
+  <section id="clearbar" class="ui panel bottom" hidden>
+    <div class="row">
+      <button id="btn-next" class="primary">Next level ▶</button>
+      <button id="btn-replay" class="ghost">Replay</button>
+    </div>
+  </section>
+
+  <button id="menubtn" class="ui iconbtn" hidden aria-label="Menu">☰</button>
+
+  <section id="menu" class="ui card center" hidden>
+    <h2>Paused</h2>
+    <div class="col">
+      <button id="m-resume" class="primary">Resume</button>
+      <button id="m-restart">Restart level</button>
+      <button id="m-next" class="ghost">Skip to next level</button>
+      <button id="m-cal" class="ghost">Recalibrate camera</button>
+      <button id="m-mute" class="ghost">Sound: on</button>
+      <button id="m-lobby" class="ghost">Back to lobby</button>
+    </div>
+  </section>
+
+  <!-- Simulator toolbar -->
+  <section id="simbar" class="ui simbar" hidden>
+    <b>Simulator</b>
+    <button data-tool="hand" class="tool on">Hand</button>
+    <button data-tool="bar" class="tool">Bar</button>
+    <button data-tool="block" class="tool">Block</button>
+    <button id="s-rot-l" class="tool" aria-label="rotate left">⟲</button>
+    <button id="s-rot-r" class="tool" aria-label="rotate right">⟳</button>
+    <button id="s-big" class="tool" aria-label="bigger">＋</button>
+    <button id="s-small" class="tool" aria-label="smaller">－</button>
+    <button id="s-clear" class="tool">Clear</button>
+    <span class="small">click = place · drag = move · wheel = rotate · right-click = delete · ←/→ nudge · W/A/S/D gravity</span>
+  </section>
+
+  <aside id="debug" class="ui debug" hidden>
+    <div id="dbg-text"></div>
+    <canvas id="dbg-cam" width="160" height="90"></canvas>
+    <canvas id="dbg-mask" width="160" height="90"></canvas>
+  </aside>
+
+  <div id="toast" class="ui toast" hidden></div>
+
+  <script type="module" src="/js/host/app.js"></script>
+</body>
+</html>

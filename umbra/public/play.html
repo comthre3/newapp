@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+  <meta name="theme-color" content="#0b0d1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Umbra Controller</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="pad">
+  <!-- step 1: join form -->
+  <section id="join" class="join-form" hidden>
+    <h1 style="margin:0;letter-spacing:.2em;color:#fff">UMBRA</h1>
+    <input id="in-room" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code">
+    <input id="in-name" class="name" maxlength="16" placeholder="Your name" autocomplete="nickname" aria-label="Your name">
+    <button id="btn-join">Join</button>
+    <div id="join-err" class="err"></div>
+  </section>
+
+  <!-- step 2: controller -->
+  <header id="bar" hidden>
+    <span class="dot" id="dot"></span>
+    <span class="who" id="who">…</span>
+    <span class="pill" id="room">----</span>
+    <span class="pill" id="conn">connecting</span>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <b id="role">Waiting for the host…</b>
+    <span id="roledesc"></span>
+  </div>
+
+  <main id="pad" hidden>
+    <div id="gravity" class="sect" hidden>
+      <div class="dpad">
+        <span></span><button data-g="up" aria-label="gravity up">▲</button><span></span>
+        <button data-g="left" aria-label="gravity left">◀</button><span class="mid"></span><button data-g="right" aria-label="gravity right">▶</button>
+        <span></span><button data-g="down" aria-label="gravity down">▼</button><span></span>
+      </div>
+    </div>
+    <div id="switches" class="sect switches" hidden></div>
+    <div id="nudge" class="sect nudge grow">
+      <button id="n-neg" aria-label="push left">◀</button>
+      <button id="n-pos" aria-label="push right">▶</button>
+    </div>
+  </main>
+
+  <footer id="foot" hidden>
+    <button id="f-reset">Reset orb</button>
+    <button id="f-spawn" hidden>+ Orb</button>
+    <button id="f-next" class="primary" hidden>Next level ▶</button>
+  </footer>
+
+  <script type="module" src="/js/player/app.js"></script>
+</body>
+</html>
