@@ -388,13 +388,54 @@ test('a target that cannot be measured, or a ring that was never clear, voids th
   assert.match(rows.find((x) => x.id === 'latency').summary, /Invalid run: 40%/);
   assert.equal(overall(rows), 'INCOMPLETE');
 
+  const voidTry = { success: false, forming: null, peakIoU: 0, void: true };
   const r2 = goodResults();
-  r2.ring = r2.ring.map((x, i) => (i === 0 ? { ...x, neverClear: 2 } : x));
+  r2.ring = r2.ring.map((x, i) => (i === 0 ? { ...x, trials: [...x.trials.slice(0, 2), voidTry, voidTry, voidTry] } : x));
   rows = evaluate(r2);
   assert.equal(rows.find((x) => x.id === `ring:${LABELS.ring}`).status, 'skipped');
   assert.match(rows.find((x) => x.id === `ring:${LABELS.ring}`).summary, /still covered/);
 
+  // one skipped try among good ones is noted, not fatal, and does not count as a failure
+  const r2b = goodResults();
+  r2b.ring = r2b.ring.map((x, i) => (i === 0 ? { ...x, trials: [...x.trials.slice(0, 9), voidTry] } : x));
+  const row = evaluate(r2b).find((x) => x.id === `ring:${LABELS.ring}`);
+  assert.equal(row.status, 'pass');
+  assert.match(row.summary, /Fitted 9 of 9.*1 further try was skipped/);
+
   const r3 = goodResults();
   r3.ring = r3.ring.map((x, i) => (i === 0 ? { ...x, blindFrac: 0.3 } : x));
   assert.equal(evaluate(r3).find((x) => x.id === `ring:${LABELS.ring}`).status, 'skipped');
+});
+
+test('connectivity: no scored data is never a pass, and a total dropout is never "not run" (regression review R1)', () => {
+  const base = { phones: 4, dropped: 0, participants: 4, windows: 12, scoredFrac: 1, stalledFrac: 0, relayHost: 'relay.example.com', lan: false, perPhone: [{ medianRtt: 90, worst: 120 }] };
+  const run = (over) => { const r = goodResults(); r.connectivity = { ...base, ...over }; return evaluate(r).find((x) => x.id === 'connectivity'); };
+  assert.equal(run({}).status, 'pass');
+  // every window slept: nothing was scored
+  const asleep = run({ stalledFrac: null, scoredFrac: 0 });
+  assert.equal(asleep.status, 'skipped');
+  assert.match(asleep.summary, /screens were off/);
+  // mostly slept: one window per phone is not a result
+  assert.equal(run({ scoredFrac: 0.08, stalledFrac: 0 }).status, 'skipped');
+  // all participants dropped: a fail that lands in "Needs attention", not a silent skip
+  const gone = run({ phones: 0, dropped: 4, stalledFrac: null, scoredFrac: 0 });
+  assert.equal(gone.status, 'fail');
+  assert.match(gone.summary, /All 4 phones dropped out/);
+  assert.ok(attention(evaluate((() => { const r = goodResults(); r.connectivity = { ...base, phones: 0, dropped: 4, stalledFrac: null, scoredFrac: 0 }; return r; })())).some((a) => /Connectivity/.test(a)));
+  // joined but silent phones are left out, and the report says so
+  const quiet = run({ notReporting: 2 });
+  assert.equal(quiet.status, 'warn');
+  assert.match(quiet.summary, /2 joined phones were not reporting/);
+});
+
+test('analyzeConnectivity reports how much of the probe could really be scored', () => {
+  const t0 = 1_000_000;
+  const mk = (hidden) => Array.from({ length: 60 }, (_, i) => ({ t: t0 + i * 1000, median: 50, max: 90, hidden }));
+  const out = analyzeConnectivity({ 1: mk(false), 2: mk(true) }, t0, t0 + 60000, { participants: ['1', '2'] });
+  assert.equal(out.windows, 12);
+  assert.ok(Math.abs(out.scoredFrac - 0.5) < 1e-9, String(out.scoredFrac));
+  assert.equal(out.participants, 2);
+  const allSlept = analyzeConnectivity({ 1: mk(true) }, t0, t0 + 60000, { participants: ['1'] });
+  assert.equal(allSlept.scoredFrac, 0);
+  assert.equal(allSlept.stalledFrac, null);
 });

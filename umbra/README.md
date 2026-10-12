@@ -137,9 +137,9 @@ inputs are validated and rate-limited, names are sanitised, ≤ 8 players / 200 
 ## Tests
 
 ```bash
-npm test        # 68 unit/integration tests: vision, physics & level solvability, relay server, projector-test logic
+npm test        # 70 unit/integration tests: vision, physics & level solvability, relay server, projector-test logic
 npm run e2e     # headless Chromium: host + 2 phones, full level clear, camera error paths; screenshots → test/out/
-npm run e2e:p0  # the projector test page in the simulator: happy path plus 14 ways a real run goes wrong
+npm run e2e:p0  # the projector test page in the simulator: 22 scenarios, most of them ways a real run goes wrong
 ```
 
 The real-projector check (`/p0.html`) is documented in [docs/P0_TEST.md](docs/P0_TEST.md).

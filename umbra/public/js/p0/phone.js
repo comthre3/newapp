@@ -11,7 +11,7 @@ const token = persistentToken('umbra.p0.phone');
 
 const pending = new Map();      // seq -> send time (ms); only pings that were really sent
 const samples = [];             // { at, rtt } completed round trips
-let seq = 0, stallSeconds = 0, seconds = 0, worstEver = 0, failed = false, active = true;
+let seq = 0, stallSeconds = 0, seconds = 0, worstEver = 0, failed = false, active = false;   // pings only while the host says a probe is running
 let opened = false, offlineSince = null, outageMs = 0;      // a dropped socket is reported once, as its own length
 let lastReport = performance.now();
 
@@ -23,7 +23,7 @@ const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length 
 function showDone() {
   $('#rtt').textContent = '✓';
   $('#rtt').style.color = '#00e676';
-  $('#detail').textContent = `Test finished.\nslow seconds: ${stallSeconds} of ${seconds}\nworst: ${worstEver} ms\nYou can close this page.`;
+  $('#detail').textContent = seconds ? `Test finished.\nslow seconds: ${stallSeconds} of ${seconds}\nworst: ${worstEver} ms\nYou can close this page.` : 'No test is running. You can close this page.';
 }
 
 const link = new Link(() => ({ role: 'player', room, token, name }), {
@@ -53,6 +53,7 @@ if (!room) {
   $('#detail').textContent = 'Scan the QR code on the big screen.';
 } else {
   keepAwake();
+  $('#detail').textContent = 'Waiting for the big screen to start the test…';
   // plain http (a LAN address) cannot hold a wake lock: say so, because a locked phone stops answering
   if (!('wakeLock' in navigator)) $('#wakewarn').hidden = false;
   link.connect();

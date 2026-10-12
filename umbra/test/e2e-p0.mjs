@@ -105,6 +105,12 @@ await scenario('guided run end to end: every step runs, a phone joins and is tol
   await phone.goto(`${b.base}/p0-phone.html?room=${code}`);
   await phone.waitForFunction(() => document.querySelector('#conn').textContent === 'online');
   await page.screenshot({ path: OUT + 'p0-2-connectivity.png' });
+  // once the probe auto-starts, the strip must say so and offer Stop (not keep showing "Start probe")
+  await page.waitForFunction(() => window.__p0.activeStep && window.__p0.activeStep.stage === 'probe', null, { timeout: 30000 });
+  await page.waitForTimeout(400);
+  assert.equal(await page.textContent('#p0step'), 'Connectivity probe');
+  assert.equal(await page.locator('#p0buttons button', { hasText: 'Stop' }).count(), 1);
+  assert.equal(await page.locator('#p0buttons button', { hasText: 'Start probe' }).count(), 0);
 
   await page.waitForFunction(() => window.__done === true, null, { timeout: 120000 });
   await stopAutopilot(page);
@@ -302,6 +308,68 @@ await scenario('camera freezes mid-test: the test is discarded and the page retu
   assert.match(await page.textContent('#setupmsg'), /camera stopped/);
   assert.equal(await page.evaluate(() => window.__p0.results.quiet), undefined);
   assert.equal(await page.evaluate(() => window.__p0.results.calibration), undefined, 'a lost camera takes its calibration with it');
+});
+
+await scenario('a phone that opens the link after the run is told the test is over, and does not ping forever', async () => {
+  const page = await openFresh();
+  await page.evaluate(() => { window.__p0.runStep('conn'); });
+  await page.waitForFunction(() => window.__p0.relay.code, null, { timeout: 10000 });
+  const code = await page.evaluate(() => window.__p0.relay.code);
+  await page.locator('#p0buttons button', { hasText: 'Skip' }).click();           // the probe never ran
+  await page.waitForFunction(() => window.__p0.relay.recording === false);
+  const c = await b.browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true });
+  const p = await newPage(c, { width: 390, height: 780 });
+  await p.goto(`${b.base}/p0-phone.html?room=${code}`);
+  await p.waitForFunction(() => document.querySelector('#rtt').textContent === '✓', null, { timeout: 8000 });
+  assert.match(await p.textContent('#detail'), /No test is running/);
+  await p.waitForTimeout(2500);
+  assert.match(await p.textContent('#detail'), /No test is running/, 'it must not start pinging on its own');
+  assert.deepEqual(p.errors, []);
+});
+
+await scenario('a dry run followed by the real camera leaves no simulator toolbar and no simulated results behind', async () => {
+  const ctx = await b.browser.newContext({ permissions: ['camera'] });
+  const page = await open(ctx);
+  await page.evaluate(() => { window.__p0.results.quiet = [{ label: 'clean room', events: [], perMinHalf: [0, 0], duty: [0, 0], longest: [0, 0], ticks: 100, expectedTicks: 100 }]; });
+  await page.locator('#p0buttons button', { hasText: 'Re-aim' }).click();
+  await page.locator('#p0buttons button', { hasText: 'Change camera' }).click();
+  await page.waitForFunction(() => window.__p0.phase === 'setup');
+  await page.click('#btn-cam');
+  await page.waitForFunction(() => window.__p0.phase === 'aim', null, { timeout: 15000 });
+  assert.equal(await page.evaluate(() => document.body.classList.contains('sim')), false);
+  assert.equal(await page.isVisible('#simbar'), false);
+  assert.equal(await page.evaluate(() => window.__p0.results.quiet), undefined);
+  assert.match(await reportText(page), /Mode: real camera/);
+  assert.doesNotMatch(await reportText(page), /\[PASS\] Phantom/);
+});
+
+await scenario('after a resize interrupt, recalibrating clears the stale "Interrupted" notice', async () => {
+  const page = await openFresh();
+  await page.evaluate(() => { window.__p0.runSingle('quiet'); });
+  await page.waitForFunction(() => window.__p0.activeStep && window.__p0.activeStep.constructor.name === 'QuietStep', null, { timeout: 5000 });
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.waitForFunction(() => window.__p0.phase === 'ready' && window.__p0.notice.length > 0, null, { timeout: 5000 });
+  assert.match(await page.evaluate(() => window.__p0.notice), /Interrupted/);
+  await page.click('#p0buttons button.primary');                                   // Calibrate again
+  await page.waitForFunction(() => window.__p0.phase === 'aim');
+  await page.click('#p0buttons button.primary');                                   // Calibrate
+  await page.waitForFunction(() => window.__p0.phase === 'ready' && window.__p0.calStale === '', null, { timeout: 30000 });
+  assert.equal(await page.evaluate(() => window.__p0.notice), '');
+  assert.doesNotMatch(await page.textContent('#p0panel'), /Interrupted/);
+});
+
+await scenario('a recalibration that is cancelled or fails leaves the old calibration marked out of date', async () => {
+  const page = await openFresh();
+  await page.evaluate(() => { window.__p0.runSingle('recal'); });
+  await page.waitForFunction(() => window.__p0.activeStep && window.__p0.activeStep.constructor.name === 'RecalStep', null, { timeout: 5000 });
+  await addObject(page, { kind: 'rect', x: 480, y: 270, w: 1400, h: 800, a: 0 });   // the "projection" is blocked: the picture cannot be found again
+  await page.click('#p0buttons button.primary');                                   // Recalibrate now
+  await page.waitForFunction(() => window.__p0.activeStep && window.__p0.activeStep.busy === true);
+  await page.evaluate(() => window.__p0.stopAll());                                // and the user gives up
+  await page.waitForFunction(() => window.__p0.phase === 'ready' && window.__p0.calStale !== '', null, { timeout: 30000 });
+  assert.equal(await page.evaluate(() => window.__p0.results.recal), undefined, 'a cancelled recalibration records no result');
+  assert.match(await page.textContent('#p0panel'), /out of date/);
+  await clearObjects(page);
 });
 
 await scenario('Escape before any camera exists keeps the page usable (no broken "ready" state)', async () => {

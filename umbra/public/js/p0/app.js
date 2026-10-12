@@ -203,9 +203,10 @@ function ensureWake() {
   keepAwake();           // a locked host screen would freeze the camera and quietly thin out every timed test
 }
 
+/** A different (or lost) camera: nothing measured with the old one, not even its calibration, may stay in the report. */
 function forgetCalibration() {
-  cal = null; detector = null; calStale = ''; measured = emptyMeasured(); lastCal = null;
-  delete results.calibration;
+  cal = null; detector = null; calStale = ''; measured = emptyMeasured(); lastCal = null; notice = '';
+  resetResults({ keepCalibration: false });
 }
 
 async function startCamera() {
@@ -217,12 +218,17 @@ async function startCamera() {
   try {
     if (!FAST && document.documentElement.requestFullscreen && !document.fullscreenElement) {
       // fullscreen so the page is the whole projected picture (no browser bars) and the window cannot change size later
-      try { await document.documentElement.requestFullscreen(); } catch { /* refused: carry on */ }
+      try {
+        await document.documentElement.requestFullscreen();
+        try { await navigator.keyboard.lock(['Escape']); } catch { /* not supported: Esc leaves fullscreen, the Stop button still works */ }
+      } catch { /* refused: carry on */ }
     }
     if (camera && camera.stop) camera.stop();
     camera = new CameraSource({ deviceId: field('#camsel') || null });
     await camera.start();
     forgetCalibration();
+    document.body.classList.remove('sim');                  // leftovers of a dry run: no toolbar, no simulated results
+    $('#simbar').hidden = true;
     ensureWake();
     fillCameraList();
     $('#p0setup').hidden = true;
@@ -340,6 +346,7 @@ function acceptCalibration() {
   calManual = edited;
   cal = { corners: { tl: q[0], tr: q[1], br: q[2], bl: q[3] }, black: lastCal.black, white: lastCal.white, cw: lastCal.cw, ch: lastCal.ch, canvasW: stage.canvas.width, canvasH: stage.canvas.height };
   calStale = '';
+  notice = '';
   buildDetector();
   const edgeMarginPx = Math.min(...q.map(([x, y]) => Math.min(x, y, lastCal.cw - 1 - x, lastCal.ch - 1 - y)));
   results.calibration = { ok: !!r.ok, manual: calManual, error: r.error || null, contrast: r.contrast, areaFrac: r.areaFrac, fill: r.fill, validFrac: detector.stats.validFrac, cw: cal.cw, ch: cal.ch, attempts: calAttempts, edgeMarginPx: Number(edgeMarginPx.toFixed(1)), quad: q.map(([x, y]) => [Math.round(x), Math.round(y)]) };
@@ -546,6 +553,7 @@ class RingStep extends Step {
     this.trial = null;
     this.last = null;
     this.stuck = false;
+    this.abandon = false;
   }
   covered() { return M.discCover(vis.mask, this.cx, this.cy, this.r * 1.4) >= 0.05; }
   update(t) {
@@ -560,6 +568,7 @@ class RingStep extends Step {
         this.neverClear++;
         this.last = { success: false, forming: null, peakIoU: 0, void: true };
         this.trials.push(this.last);
+        if (this.neverClear >= 2 && this.neverClear > this.trials.length - this.neverClear) this.abandon = true;   // mostly skipped: the run is void anyway, stop wasting minutes
         this.phase = 'result';
         this.tp = t;
       }
@@ -570,7 +579,7 @@ class RingStep extends Step {
       const st = this.trial.update(vis.mask, t);
       if (st !== 'running') { this.last = this.trial.result(); this.trials.push(this.last); this.phase = 'result'; this.tp = t; }
     } else if (this.phase === 'result') {
-      if (t - this.tp > C.after) { if (this.trials.length >= C.trials) this.finish(); else { this.phase = 'rest'; this.tp = t; } }
+      if (t - this.tp > C.after) { if (this.abandon || this.trials.length >= C.trials) this.finish(); else { this.phase = 'rest'; this.tp = t; } }
     }
   }
   count() { return `${this.trials.length} / ${CFG.ring.trials} done`; }
@@ -654,16 +663,15 @@ class RecalStep extends Step {
     this.busy = true;
     setPanel({ step: 'Recalibrating', text: 'Keep hands out of the beam…' });
     const before = cal ? cal.corners : null;
+    calStale = calStale || 'the projector was bumped for the recalibration test';     // from here the old registration is suspect, whatever happens next
     let r;
     try { r = await runCal(); } catch (e) { reportError('recal', e); this.abort(); return; }
-    if (this.done) return;
     const { out, ms } = r;
     let shift = null;
     if (out.ok && before) {
       const keys = ['tl', 'tr', 'br', 'bl'];
       shift = Math.max(...keys.map((k) => Math.hypot(out.result.corners[k][0] - before[k][0], out.result.corners[k][1] - before[k][1])));
     }
-    this.res = { ok: !!out.ok, ms, shiftPx: shift, contrast: out.result.contrast, error: out.result.error || null };
     if (out.ok) {
       loadPreview(out);
       const q = preview.quad;
@@ -674,6 +682,8 @@ class RecalStep extends Step {
       // the old calibration may no longer match the picture: block the vision tests until the user calibrates again
       calStale = 'the recalibration after the bump failed';
     }
+    if (this.done) { if (phase === 'ready') renderReadyPanel(); return; }          // stopped meanwhile: keep the new calibration (or the stale mark), record no result
+    this.res = { ok: !!out.ok, ms, shiftPx: shift, contrast: out.result.contrast, error: out.result.error || null };
     this.finish();
   }
   update() {}
@@ -704,7 +714,7 @@ function ensureRelay() {
   relay.link = new Link(() => ({ role: 'host', token, room }), {
     onMessage: (m) => {
       if (m.t === 'room') { relay.code = m.code; room = m.code; try { sessionStorage.setItem('umbra.p0.room', m.code); } catch { /* ignore */ } }
-      else if (m.t === 'join') { relay.phones.set(m.id, { id: m.id, name: m.name, online: true, joinedAt: Date.now() }); if (relay.recording) relay.link.send({ t: 'to', id: m.id, m: { probe: 'start' } }); }
+      else if (m.t === 'join') { relay.phones.set(m.id, { id: m.id, name: m.name, online: true, joinedAt: Date.now() }); relay.link.send({ t: 'to', id: m.id, m: { probe: relay.recording ? 'start' : 'done' } }); }   // a phone that comes back after the run is told it is over
       else if (m.t === 'leave') { const p = relay.phones.get(m.id); if (p) p.online = false; }
       else if (m.t === 'in') {
         const p = relay.phones.get(m.id);
@@ -741,12 +751,14 @@ class ConnStep extends Step {
     this.lastJoinT = t;
     this.autoAt = null;
     this.participants = [];
+    this.notReporting = 0;
     this.probeStart = null;
     this.t1 = 0;
     this.res = null;
     this.render();
   }
   render() {
+    if (this.stage !== 'join') return;                    // the probe strip must not be overwritten by the join strip
     const n = onlinePhones().length;
     const label = `${n} phone${n === 1 ? '' : 's'} joined`;
     if (!this.built) {
@@ -764,8 +776,10 @@ class ConnStep extends Step {
   begin() {
     if (this.stage !== 'join') return;
     // only phones that are connected AND reporting right now take part; ghosts of earlier runs and late joiners never count
-    const fresh = onlinePhones().filter((p) => p.lastReportAt && Date.now() - p.lastReportAt < 3000);
+    const online = onlinePhones();
+    const fresh = online.filter((p) => p.lastReportAt && Date.now() - p.lastReportAt < 3000);
     if (!fresh.length) { toast('Waiting for the phones to start reporting…', 2500); this.autoAt = nowS() + 1; return; }
+    this.notReporting = online.length - fresh.length;           // joined but silent: said so in the report, not dropped quietly
     this.participants = fresh.map((p) => String(p.id));
     this.stage = 'probe';
     this.probeStart = Date.now();
@@ -782,6 +796,7 @@ class ConnStep extends Step {
     this.res.relayHost = info.host;
     this.res.lan = info.lan;
     this.res.secure = info.secure;
+    this.res.notReporting = this.notReporting;
     this.finish();
   }
   update(t) {

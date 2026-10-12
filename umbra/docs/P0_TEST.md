@@ -38,14 +38,14 @@ Pick one arrangement:
    If auto-calibration failed you must drag the corners yourself, and the report keeps that failure on record.
 3. Put a hand in the beam: the **live view** should show a blue tint that follows it.
 4. **Run guided test.** Follow the big text on the wall. Each step announces itself for a few seconds
-   (longer for the ones that need people or a lantern), then starts. `Space` starts, `Esc` stops.
+   (longer for the ones that need people or a lantern), then starts. `Space` starts, `Esc` stops (in fullscreen Chrome the page holds Esc for itself; hold Esc to leave fullscreen, and the Stop button always works).
    While a test runs the control panel shrinks to one small row at the bottom so it hides as little of the picture as possible.
 
 | Step | You | What it measures | Pass |
 |---|---|---|---|
 | **Latency** | hands out, still | The wall flashes a dark square 20 times, only after the square has been seen clear; how long until the camera **and** detector notice (and release). Reports the raw detector and the debounced one the game uses. A square the camera never noticed counts as 2 s. | median <= 300 ms, p95 <= 450 ms; more than 5% never noticed fails, any miss warns |
 | **Quiet room** | nothing in the beam, still (60 s) | Phantom shadows per half of the wall: how often one appears, how much of the time one is present, how long the longest stays | <= 1 appearance per lane per minute, present <= 5% of the time, longest <= 5 s |
-| **Shadow fit** | hand or prop in the beam | Fit your shadow to a glowing ring and hold it 1 s, 10 times. A try only starts from a clear ring. | fits in >= 8 of 10 within 10 s |
+| **Shadow fit** | hand or prop in the beam | Fit your shadow to a glowing ring and hold it 1 s, 10 times. A try only starts from a clear ring; a try whose ring never clears is skipped, and too many skipped voids the run. | fits in >= 8 of 10 within 10 s |
 | **Small ring** | the same, smaller ring | The smallest shadow the setup resolves (informs, does not decide) | same |
 | **People in beam** | 2-3 people, a child if possible, props | How much of each lane's area is covered | information (design cap: 25 % per lane) |
 | **Quiet + lantern** | light the lantern or fire, lamps on; people stay **nearby but out of the beam** | Phantom shadows with camp lighting | same as Quiet room |
@@ -83,7 +83,7 @@ projector model and brightness, what you projected onto, camera model, how brigh
 - **Connectivity** measures the path between the phones and whatever served the page. Served from your laptop, that is your **local Wi-Fi**: the report says so,
   and caps the result at a warning. To learn about *mobile data at camp*, serve the page over the internet (setup C), then open the QR link from phones on
   mobile data at the camp spot. Phones that are connected and reporting when you press *Start probe* are the ones scored; phones that left earlier or join
-  later are not. A phone whose screen turned off is shown as *slept* and its seconds are left out, not blamed on the network. Plain-http pages cannot hold a wake lock,
+  later are not. A phone whose screen turned off is shown as *slept* and its seconds are left out, not blamed on the network; if most of the probe slept, the row is voided rather than passed. Phones that joined but were silent at the start are listed as left out. If every phone drops out the row fails (a total outage must not read as "not run"). Plain-http pages cannot hold a wake lock,
   so set the phones' Auto-Lock to Never. The phone page stops pinging when the host ends the probe.
 - The simulator exists to prove the page works. It has no real latency, no real projector, no real people.
 
@@ -99,7 +99,8 @@ A test that went wrong is **voided and shown as SKIP**, not scored. In particula
 - **Interruptions.** If the page is hidden (locked screen, other tab), freezes, or the camera is lost or stops delivering pictures, the running test is discarded
   and the Ready screen says why. A timed test that processed too few camera samples is voided.
 - **Changed picture.** Resizing or rotating the window after calibration marks the calibration out of date and blocks tests until you calibrate again. A failed
-  recalibration does the same.
+  recalibration does the same, and so does a recalibration you cancel after bumping the projector.
+- **New camera, new run.** Switching camera (or losing it) clears every result and the calibration, so a dry run in the simulator can never show up in a real report.
 - **Honest labels.** An auto-calibration failure stays in the report even if you place the corners by hand. Page errors are listed once and make the run INVALID.
 
 ## 6. URL options

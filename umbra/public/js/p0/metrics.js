@@ -29,6 +29,7 @@ export const THRESHOLDS = {
   stallMaxFrac: 0.25,
   connPhonesDesign: 8,        // the design condition: up to 8 phones on a camp network
   connPhonesMin: 4,           // fewer phones than this can only give a provisional pass
+  connMinScoredFrac: 0.5,     // share of the expected 5 s windows that must really be scored (not slept) for the row to mean anything
   validFracPass: 0.9,
   validFracWarn: 0.7,
   contrastWarn: 0.15,
@@ -340,10 +341,13 @@ export function analyzeConnectivity(reports, startMs, endMs, { windowS = THRESHO
     total += scored;
     perPhone.push({ id, dropped: false, reports: inside.length, windows: scored, stalledWindows: phoneStalled, sleptWindows: slept, medianRtt: median(inside.map((r) => r.median)), p95Max: percentile(inside.map((r) => r.max), 95), worst: inside.length ? Math.max(...inside.map((r) => r.max)) : null });
   }
+  const present = perPhone.filter((p) => !p.dropped).length;
   return {
-    phones: perPhone.filter((p) => !p.dropped).length,
+    participants: perPhone.length,
+    phones: present,
     dropped: perPhone.filter((p) => p.dropped).length,
     windows,
+    scoredFrac: present ? total / (windows * present) : 0,
     stalledFrac: total ? stalled / total : null,
     perPhone,
   };
@@ -419,11 +423,13 @@ export function evaluate(results, T = THRESHOLDS) {
     const id = `ring:${label}`;
     if (!r) { skip(id, title, gate); continue; }
     if (r.blindFrac > T.blindMaxFrac) { add({ id, title, gate, status: 'skipped', summary: `Invalid run: ${pct(r.blindFrac)} of the ring cannot be measured (outside the camera's view, too dim, or under the page's own controls). Re-aim, recalibrate and repeat.` }); continue; }
-    if (r.neverClear > 0) { add({ id, title, gate, status: 'skipped', summary: `Invalid run: the ring was still covered when ${r.neverClear} ${r.neverClear === 1 ? 'try was' : 'tries were'} due to start (a shadow stuck on it, or a hand left in it). Clear the ring and repeat.` }); continue; }
-    const n = r.trials.length, ok = r.trials.filter((t) => t.success).length, frac = n ? ok / n : 0;
+    // a try that never started because the ring stayed covered is skipped, not scored; too many skipped voids the run
+    const voided = r.trials.filter((t) => t.void).length, scored = r.trials.filter((t) => !t.void);
+    if (voided > scored.length) { add({ id, title, gate, status: 'skipped', summary: `Invalid run: the ring was still covered when ${voided} ${voided === 1 ? 'try was' : 'tries were'} due to start (a shadow stuck on it, or a hand left in it) and only ${scored.length} could be scored. Clear the ring and repeat.` }); continue; }
+    const n = scored.length, ok = scored.filter((t) => t.success).length, frac = n ? ok / n : 0;
     const status = frac >= T.ringPassFrac ? 'pass' : gate ? 'fail' : frac >= T.ringSmallWarnFrac ? 'warn' : 'fail';
     add({ id, title, gate, status,
-      summary: `Fitted ${ok} of ${n} within ${T.ringTimeoutS} s (want ${fmt(T.ringPassFrac * 100)}%+); forming time median ${fmt(r.summary.median, 1)} s; best overlap ${fmt(Math.max(0, ...r.trials.map((t) => t.peakIoU)) * 100)}%.`,
+      summary: `Fitted ${ok} of ${n} within ${T.ringTimeoutS} s (want ${fmt(T.ringPassFrac * 100)}%+); forming time median ${fmt(r.summary.median, 1)} s; best overlap ${fmt(Math.max(0, ...r.trials.map((t) => t.peakIoU)) * 100)}%.${voided ? ` ${voided} further ${voided === 1 ? 'try was' : 'tries were'} skipped because the ring was still covered.` : ''}`,
       consequence: status === 'pass' ? '' : gate ? 'Below the design bar: recalibrate and run it once more; if it stays below, the design fallback is a single lane against the Ghost, then human-judged Charades.' : 'Child-size shadows are not resolved reliably: use bigger targets or a closer camera.' });
     const timeouts = n - ok;
     if (r.summary.n >= 5) {
@@ -458,13 +464,16 @@ export function evaluate(results, T = THRESHOLDS) {
   // ---- connectivity
   const k = results.connectivity;
   if (!k) skip('connectivity', 'Connectivity (phones to relay)', false);
-  else if (!k.phones) skip('connectivity', 'Connectivity (phones to relay)', false, `No phones stayed connected for the probe${k.dropped ? ` (${k.dropped} dropped out)` : ''}.`);
+  else if (!k.phones && k.dropped) add({ id: 'connectivity', title: 'Connectivity (phones to relay)', status: 'fail', summary: `All ${k.dropped} phone${k.dropped === 1 ? '' : 's'} dropped out during the probe (the connection failed, or their screens locked: keep the screens on and repeat).`, consequence: 'If this repeats with the screens on, connectivity cannot be trusted at this spot: an offline / local-network mode becomes a must-build.' });
+  else if (!k.phones) skip('connectivity', 'Connectivity (phones to relay)', false, 'No phones were reporting when the probe started.');
+  else if ((k.scoredFrac ?? 1) < T.connMinScoredFrac || k.stalledFrac === null) skip('connectivity', 'Connectivity (phones to relay)', false, `Invalid run: the phones' screens were off for most of the probe (${pct(k.scoredFrac ?? 0)} of the time could be scored). Keep the screens on and repeat.`);
   else {
     let status = k.stalledFrac <= T.stallMaxFrac ? 'pass' : 'fail';
     const notes = [];
     if (status === 'pass' && k.phones < T.connPhonesMin) { status = 'warn'; notes.push(`only ${k.phones} phone${k.phones === 1 ? '' : 's'} tested; the design condition is up to ${T.connPhonesDesign} on one network`); }
     if (k.lan) { if (status === 'pass') status = 'warn'; notes.push(`measured over a local network (${k.relayHost || 'LAN'}), which says nothing about mobile data at camp: repeat with phones on mobile data against an internet address`); }
     if (k.dropped) { if (status === 'pass') status = 'warn'; notes.push(`${k.dropped} phone${k.dropped === 1 ? '' : 's'} dropped out during the probe`); }
+    if (k.notReporting) { if (status === 'pass') status = 'warn'; notes.push(`${k.notReporting} joined phone${k.notReporting === 1 ? ' was' : 's were'} not reporting when the probe started and ${k.notReporting === 1 ? 'was' : 'were'} left out (a phone with a bad link looks like this)`); }
     const slept = k.perPhone.reduce((a, p) => a + (p.sleptWindows || 0), 0);
     if (slept) notes.push(`${slept} window${slept === 1 ? '' : 's'} excluded because the phone's screen was off`);
     add({ id: 'connectivity', title: 'Connectivity (phones to relay)', status,
