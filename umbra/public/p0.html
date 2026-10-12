@@ -19,10 +19,20 @@
     <ol class="p0how">
       <li>Point the projector at a bedsheet, wall or tent. Dim the room if you can.</li>
       <li>Aim the camera so the <b>whole bright picture</b> is in view, steady, off to one side.</li>
-      <li>Start the camera, calibrate, then run the guided test. Follow the big text on the wall.</li>
+      <li>Start the camera (the page goes fullscreen so it is the whole picture), calibrate, then run the guided test. Follow the big text on the wall.</li>
     </ol>
     <div class="row">
       <label class="select">Camera <select id="camsel"><option value="">Rear / default camera</option></select></label>
+    </div>
+    <div class="p0notes">
+      <label class="select">How is the projector connected? <select id="projlink">
+        <option value="">(not stated)</option>
+        <option>HDMI cable</option>
+        <option>USB-C / DisplayPort cable</option>
+        <option>Wireless cast / AirPlay / Miracast</option>
+        <option>Projector's own player / browser</option>
+      </select></label>
+      <input id="notes" maxlength="160" placeholder="Notes for the report: projector model, surface, room light, place (optional)">
     </div>
     <div class="row">
       <button id="btn-cam" class="primary">Start camera</button>
@@ -32,7 +42,7 @@
     <p class="small">Needs https:// or http://localhost for the camera. Details: docs/P0_TEST.md</p>
   </section>
 
-  <!-- Control strip (always inside the detector's ignore area) -->
+  <!-- Control strip: the detector ignores the cells under it, and every result reports how much that hid -->
   <section id="p0panel" class="ui panel bottom p0panel" hidden>
     <div class="p0head"><b id="p0step">…</b><span id="p0count" class="small"></span></div>
     <p id="p0text"></p>
@@ -45,6 +55,7 @@
     <div class="row">
       <button id="rep-copy" class="primary">Copy report</button>
       <button id="rep-json" class="ghost">Download JSON</button>
+      <button id="rep-reset" class="ghost">Clear results</button>
       <button id="rep-close" class="ghost">Back</button>
     </div>
     <div id="rep-msg" class="status"></div>

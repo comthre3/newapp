@@ -4,8 +4,8 @@
 import { GW, GH, CELL } from '../game/world.js';
 
 export const THRESHOLDS = {
-  ringPassFrac: 0.8,          // adult fits the ring in 8 of 10 tries
-  ringWarnFrac: 0.6,
+  ringPassFrac: 0.8,          // adult fits the ring in 8 of 10 tries (design: anything less triggers the single-lane fallback)
+  ringSmallWarnFrac: 0.6,     // the child-size ring is informative, not a gate
   ringIoU: 0.6,               // "fit" = overlap of shadow and target of at least this, held ringHoldS
   ringHoldS: 1,
   ringTimeoutS: 10,
@@ -13,17 +13,30 @@ export const THRESHOLDS = {
   latencyMedianPassMs: 300,
   latencyP95PassMs: 450,
   latencyMedianWarnMs: 500,
+  latencyMissFailFrac: 0.05,  // squares the camera never noticed: more than this fails
+  releaseMissFailFrac: 0.1,   // shadows that never cleared after the square went white
   phantomPerMinPerHalf: 1,    // phantom blobs per lane (half-wall) per minute
+  phantomDuty: 0.05,          // share of the time a phantom may be present in a lane
+  phantomLongestS: 5,         // longest a single phantom may stay
   areaCap: 0.25,              // design cap for shadow area per lane
+  ignoredWarnFrac: 0.05,      // share of a lane hidden under the page's own controls before we warn
+  blindMaxFrac: 0.1,          // share of a test target that may be unmeasurable (out of view, too dim, under controls) before the run is void
+  minSampleFrac: 0.8,         // a timed step needs this share of its expected camera samples
   recalPassMs: 6000,
   recalWarnMs: 10000,
   stallRttMs: 500,
   stallWindowS: 5,
   stallMaxFrac: 0.25,
+  connPhonesDesign: 8,        // the design condition: up to 8 phones on a camp network
+  connPhonesMin: 4,           // fewer phones than this can only give a provisional pass
   validFracPass: 0.9,
   validFracWarn: 0.7,
   contrastWarn: 0.15,
+  edgeMarginPx: 3,
 };
+
+/** Result labels shared by the page and the verdict rules. */
+export const LABELS = { quietClean: 'clean room', quietLantern: 'lantern nearby', ring: 'ring (r=70)', ringSmall: 'small ring (r=42)' };
 
 // ------------------------------------------------------------------ statistics
 const finite = (a) => a.filter((x) => typeof x === 'number' && Number.isFinite(x));
@@ -79,38 +92,57 @@ export function findBlobs(mask, gw = GW, gh = GH, minCells = 6) {
 }
 
 /**
- * Counts "phantom" events: a blob that appears after the board has been quiet for a few ticks.
- * Each event is attributed to the left (0) or right (1) half of the wall = one lane.
+ * Phantom shadows, tracked separately for the left (0) and right (1) half of the wall, i.e. per lane.
+ * Three things are measured, because a ghost can fail in three ways:
+ *  - events: a blob that APPEARS after the lane has been quiet for `quietTicks` (flicker counts again each time);
+ *  - duty: the share of ticks a blob is present (a permanent ghost has duty ~1);
+ *  - longest: the longest unbroken stretch, in seconds.
+ * A blob in one lane never hides one in the other, and simultaneous blobs are each attributed to their own lane.
  */
 export class BlobEvents {
-  constructor({ gw = GW, quietTicks = 3 } = {}) {
+  constructor({ gw = GW, quietTicks = 2 } = {}) {
     this.gw = gw;
     this.quietTicks = quietTicks;
-    this.quiet = quietTicks;
-    this.active = false;
     this.events = [];
+    this.ticks = 0;
     this.peakCells = 0;
+    this.lane = [0, 1].map(() => ({ active: false, quiet: quietTicks, present: 0, runStart: null, longest: 0 }));
+    this.lastT = null;
+    this.span = 0;
   }
 
   update(blobs, t) {
-    if (blobs.length) {
-      if (!this.active && this.quiet >= this.quietTicks) {
-        const big = blobs.reduce((a, b) => (b.cells > a.cells ? b : a));
-        this.events.push({ t, half: big.cx < this.gw / 2 ? 0 : 1, cells: big.cells });
+    this.ticks++;
+    if (this.lastT !== null) this.span = Math.max(this.span, t - this.lastT);
+    this.lastT = t;
+    for (let h = 0; h < 2; h++) {
+      const L = this.lane[h];
+      const mine = blobs.filter((b) => (b.cx < this.gw / 2 ? 0 : 1) === h);
+      if (mine.length) {
+        if (!L.active && L.quiet >= this.quietTicks) {
+          const big = mine.reduce((a, b) => (b.cells > a.cells ? b : a));
+          this.events.push({ t, half: h, cells: big.cells });
+        }
+        if (L.runStart === null) L.runStart = t;
+        L.longest = Math.max(L.longest, t - L.runStart);
+        L.active = true;
+        L.quiet = 0;
+        L.present++;
+        for (const b of mine) this.peakCells = Math.max(this.peakCells, b.cells);
+      } else {
+        L.active = false;
+        L.quiet++;
+        L.runStart = null;
       }
-      this.active = true;
-      this.quiet = 0;
-      for (const b of blobs) this.peakCells = Math.max(this.peakCells, b.cells);
-    } else {
-      this.active = false;
-      this.quiet++;
     }
   }
 
   perMinute(durationS) {
     const k = 60 / Math.max(1, durationS);
-    return [this.events.filter((e) => e.half === 0).length * k, this.events.filter((e) => e.half === 1).length * k];
+    return [0, 1].map((h) => this.events.filter((e) => e.half === h).length * k);
   }
+  duty() { return this.lane.map((L) => (this.ticks ? L.present / this.ticks : 0)); }
+  longest() { return this.lane.map((L) => L.longest); }
 }
 
 // ------------------------------------------------------------------ ring fitting
@@ -187,21 +219,28 @@ export class RingTrial {
 // ------------------------------------------------------------------ latency probe
 /**
  * Drives the "dark square" latency probe. The page paints a dark square when `step` says `dark`;
- * `readings` (from the vision loop) say when the camera + detector noticed. Only readings taken
- * AFTER the paint count (readings.t > the paint time), so a stale frame can never score.
- *   readings = { t, rawDark, stableDark, rawLit, stableClear }   (all booleans except t, seconds)
- * Per trial it records the delay until the raw (unfiltered) and stable (debounced, what the game
- * uses) detector flipped, for both the dark onset and the release.
+ * `readings` (from the vision loop) say when the camera + detector noticed. Rules that keep it honest:
+ *  - only readings taken AFTER the paint count (readings.t > the paint time), so a stale frame never scores;
+ *  - the square must be seen CLEAR (lit, no shadow) for `clearTicks` fresh readings before every flash, so a hand or a
+ *    stuck shadow in the square can never produce an absurdly fast "detection"; if it stays unclear for
+ *    `clearTimeoutS` the trial is discarded and counted as contaminated, and after `maxContaminated` the probe stops;
+ *  - a missed detection stays in the statistics as a value equal to the timeout (see summary().stableOnsetCensored).
+ *   readings = { t, rawDark, stableDark, rawLit, stableClear }   (booleans except t, seconds)
  */
 export class LatencyProbe {
-  constructor({ trials = 20, timeoutS = 2, gapS = [0.8, 1.6], rng = Math.random } = {}) {
-    Object.assign(this, { trials, timeoutS, gapS, rng });
+  constructor({ trials = 20, timeoutS = 2, gapS = [0.8, 1.6], clearTicks = 3, clearTimeoutS = 3, maxContaminated = 6, rng = Math.random } = {}) {
+    Object.assign(this, { trials, timeoutS, gapS, clearTicks, clearTimeoutS, maxContaminated, rng });
     this.results = [];
     this.phase = 'gap';
     this.dark = false;
     this.tNext = null;
     this.done = false;
+    this.aborted = null;
+    this.contaminated = 0;
     this.rec = null;
+    this.clearCount = 0;
+    this.lastSeen = -Infinity;
+    this.waitSince = null;
   }
 
   get index() { return this.results.length + (this.phase === 'gap' ? 0 : 1); }
@@ -210,11 +249,26 @@ export class LatencyProbe {
 
   step(now, rd) {
     if (this.done) return { dark: false, done: true };
-    if (this.tNext === null) this.tNext = now + this.gap();
+    if (this.tNext === null) { this.tNext = now + this.gap(); this.waitSince = null; }
     const fresh = (t0) => rd && rd.t > t0;
     if (this.phase === 'gap') {
       this.dark = false;
-      if (now >= this.tNext) { this.phase = 'dark'; this.dark = true; this.t0 = now; this.rec = { raw: null, stable: null, rawRel: null, stableRel: null }; }
+      if (now >= this.tNext) {
+        if (this.waitSince === null) { this.waitSince = now; this.clearCount = 0; this.lastSeen = now; }
+        if (rd && rd.t > this.lastSeen) {              // a new vision reading since we started waiting
+          this.lastSeen = rd.t;
+          this.clearCount = rd.stableClear && rd.rawLit ? this.clearCount + 1 : 0;
+        }
+        if (this.clearCount >= this.clearTicks) {
+          this.phase = 'dark'; this.dark = true; this.t0 = now; this.waitSince = null;
+          this.rec = { raw: null, stable: null, rawRel: null, stableRel: null };
+        } else if (now - this.waitSince > this.clearTimeoutS) {
+          this.contaminated++;
+          this.waitSince = null;
+          this.tNext = now + this.gap();
+          if (this.contaminated >= this.maxContaminated) { this.done = true; this.aborted = 'square-not-clear'; return { dark: false, done: true }; }
+        }
+      }
     } else if (this.phase === 'dark') {
       this.dark = true;
       if (fresh(this.t0)) {
@@ -233,6 +287,7 @@ export class LatencyProbe {
         if (this.results.length >= this.trials) { this.done = true; this.dark = false; return { dark: false, done: true }; }
         this.phase = 'gap';
         this.tNext = now + this.gap();
+        this.waitSince = null;
       }
     }
     return { dark: this.dark, done: false };
@@ -240,12 +295,17 @@ export class LatencyProbe {
 
   summary() {
     const col = (k) => this.results.map((r) => r[k]);
+    const timeoutMs = this.timeoutS * 1000;
     return {
       trials: this.results.length,
       missed: this.results.filter((r) => r.missed).length,
       missedRelease: this.results.filter((r) => r.missedRelease).length,
+      contaminated: this.contaminated,
+      aborted: this.aborted,
+      timeoutMs,
       rawOnset: summarize(col('raw')),
       stableOnset: summarize(col('stable')),
+      stableOnsetCensored: summarize(this.results.map((r) => (r.stable === null ? timeoutMs : r.stable))),
       rawRelease: summarize(col('rawRel')),
       stableRelease: summarize(col('stableRel')),
     };
@@ -254,133 +314,196 @@ export class LatencyProbe {
 
 // ------------------------------------------------------------------ connectivity
 /**
- * reports: { [phoneId]: [{ t (ms, host clock), median (ms), max (ms) }, ...] }, one entry per second per phone.
- * A 5 s window is "stalled" for a phone when it has no report at all or any report has max RTT above the threshold.
+ * reports: { [phoneId]: [{ t (ms, host clock), median (ms), max (ms), hidden? }, ...] }, one entry per second per phone.
+ * Only `participants` (phones that were connected and reporting when the probe started) are scored, so ghosts from earlier
+ * runs and late joiners never count as stalls. Phones in `left` disconnected during the probe: reported, not scored.
+ * A 5 s window is "stalled" for a phone when it has no report at all or any report has max RTT above the threshold;
+ * windows in which the phone said its page was hidden are counted as "slept", not as network stalls.
  */
-export function analyzeConnectivity(reports, startMs, endMs, { windowS = THRESHOLDS.stallWindowS, stallMs = THRESHOLDS.stallRttMs } = {}) {
+export function analyzeConnectivity(reports, startMs, endMs, { windowS = THRESHOLDS.stallWindowS, stallMs = THRESHOLDS.stallRttMs, participants = Object.keys(reports), left = [] } = {}) {
   const windows = Math.max(1, Math.floor((endMs - startMs) / (windowS * 1000)));
+  const gone = new Set(left.map(String));
   const perPhone = [];
   let stalled = 0, total = 0;
-  for (const [id, list] of Object.entries(reports)) {
-    const inside = list.filter((r) => r.t >= startMs && r.t < endMs);
-    let phoneStalled = 0;
+  for (const id of participants.map(String)) {
+    const inside = (reports[id] || []).filter((r) => r.t >= startMs && r.t < endMs);
+    if (gone.has(id)) { perPhone.push({ id, dropped: true, reports: inside.length, windows: 0, stalledWindows: 0, sleptWindows: 0, medianRtt: median(inside.map((r) => r.median)), p95Max: percentile(inside.map((r) => r.max), 95), worst: inside.length ? Math.max(...inside.map((r) => r.max)) : null }); continue; }
+    let phoneStalled = 0, slept = 0, scored = 0;
     for (let w = 0; w < windows; w++) {
       const a = startMs + w * windowS * 1000, b = a + windowS * 1000;
       const rs = inside.filter((r) => r.t >= a && r.t < b);
+      if (rs.some((r) => r.hidden)) { slept++; continue; }
+      scored++;
       if (!rs.length || rs.some((r) => r.max > stallMs)) phoneStalled++;
     }
     stalled += phoneStalled;
-    total += windows;
-    perPhone.push({ id, reports: inside.length, windows, stalledWindows: phoneStalled, medianRtt: median(inside.map((r) => r.median)), p95Max: percentile(inside.map((r) => r.max), 95), worst: inside.length ? Math.max(...inside.map((r) => r.max)) : null });
+    total += scored;
+    perPhone.push({ id, dropped: false, reports: inside.length, windows: scored, stalledWindows: phoneStalled, sleptWindows: slept, medianRtt: median(inside.map((r) => r.median)), p95Max: percentile(inside.map((r) => r.max), 95), worst: inside.length ? Math.max(...inside.map((r) => r.max)) : null });
   }
-  return { phones: perPhone.length, windows, stalledFrac: total ? stalled / total : null, perPhone };
+  return {
+    phones: perPhone.filter((p) => !p.dropped).length,
+    dropped: perPhone.filter((p) => p.dropped).length,
+    windows,
+    stalledFrac: total ? stalled / total : null,
+    perPhone,
+  };
 }
 
 // ------------------------------------------------------------------ verdicts and report
 const fmt = (x, d = 0) => (x === null || x === undefined || Number.isNaN(x) ? 'n/a' : Number(x).toFixed(d));
+const pct = (x, d = 0) => (x === null || x === undefined ? 'n/a' : `${(x * 100).toFixed(d)}%`);
 
 /**
- * Turn raw results into rows { id, title, gate, status: pass|warn|fail|info|skipped, summary, consequence }.
- * `gate` rows decide the overall GO / CAUTION / NO-GO.
+ * Turn raw results into rows { id, title, gate, status: pass|warn|fail|info|skipped|invalid, summary, consequence }.
+ * `gate` rows decide the overall verdict. Every required gate always gets a row: a test that was not run (or was
+ * invalid) shows as "skipped", never silently as nothing.
  */
 export function evaluate(results, T = THRESHOLDS) {
   const rows = [];
   const add = (r) => rows.push({ gate: false, consequence: '', ...r });
+  const skip = (id, title, gate, why = 'Not run.') => add({ id, title, gate, status: 'skipped', summary: why });
 
+  // ---- calibration
   const c = results.calibration;
-  if (!c) add({ id: 'calibration', title: 'Calibration', gate: true, status: 'skipped', summary: 'Not run.' });
-  else if (!c.ok && !c.manual) add({ id: 'calibration', title: 'Calibration', gate: true, status: 'fail', summary: `Auto-calibration failed (${c.error || 'unknown'}); contrast ${fmt(c.contrast, 2)}.`, consequence: 'Fix aiming and contrast first (dim the room, fit the whole picture in view). Manual corners still allow play.' });
+  if (!c) skip('calibration', 'Calibration', true);
+  else if (!c.ok && !c.manual) add({ id: 'calibration', title: 'Calibration', gate: true, status: 'fail', summary: `Auto-calibration failed (${c.error || 'unknown'}); contrast ${fmt(c.contrast, 2)}.`, consequence: 'Fix aiming and contrast first (dim the room, fit the whole picture in view). Hand-placed corners can still work.' });
   else {
     const vf = c.validFrac ?? 0;
-    const status = vf < T.validFracWarn ? 'fail' : vf < T.validFracPass || (c.contrast ?? 1) < T.contrastWarn ? 'warn' : 'pass';
-    add({ id: 'calibration', title: 'Calibration', gate: true, status, summary: `${c.manual ? 'Manual corners. ' : ''}${fmt(vf * 100)}% of the board is measurable (want ${T.validFracPass * 100}%+); contrast ${fmt(c.contrast, 2)} (want ${T.contrastWarn}+); camera ${c.cw}x${c.ch}.`, consequence: status === 'pass' ? '' : 'Part of the picture is too dim or out of view for the camera: dim the room, raise projector brightness, aim straighter.' });
+    let status = vf < T.validFracWarn ? 'fail' : vf < T.validFracPass || (c.contrast ?? 1) < T.contrastWarn ? 'warn' : 'pass';
+    const notes = [];
+    if (!c.ok) { notes.push(`auto-calibration failed (${c.error || 'unknown'}), corners placed by hand`); if (status === 'pass') status = 'warn'; }
+    else if (c.manual) notes.push('corners adjusted by hand');
+    if (c.edgeMarginPx !== undefined && c.edgeMarginPx !== null && c.edgeMarginPx < T.edgeMarginPx && (c.manual || !c.ok)) { notes.push('a corner sits on the edge of the camera view, so part of the picture may be cut off'); if (status === 'pass') status = 'warn'; }
+    add({ id: 'calibration', title: 'Calibration', gate: true, status,
+      summary: `${notes.length ? `${notes.join('; ')}. ` : ''}${pct(vf)} of the board is measurable (want ${T.validFracPass * 100}%+); contrast ${fmt(c.contrast, 2)} (want ${T.contrastWarn}+); camera ${c.cw}x${c.ch}.`,
+      consequence: status === 'pass' ? '' : 'Part of the picture is too dim, out of view or only roughly located: dim the room, raise projector brightness, move the camera back so every edge is visible.' });
   }
 
+  // ---- latency
   const l = results.latency;
-  if (!l) add({ id: 'latency', title: 'Latency (display to camera to mask)', gate: true, status: 'skipped', summary: 'Not run.' });
+  if (!l) skip('latency', 'Latency (display to camera to mask)', true);
   else {
     const s = l.summary;
-    const med = s.stableOnset.median, p95 = s.stableOnset.p95;
-    let status = 'pass';
-    if (s.trials === 0 || s.missed / s.trials > 0.1) status = 'fail';
-    else if (med > T.latencyMedianWarnMs) status = 'fail';
-    else if (med > T.latencyMedianPassMs || p95 > T.latencyP95PassMs) status = 'warn';
-    add({ id: 'latency', title: 'Latency (display to camera to mask)', gate: true, status,
-      summary: `Median ${fmt(med)} ms, p95 ${fmt(p95)} ms (want <= ${T.latencyMedianPassMs} / ${T.latencyP95PassMs}); raw detector median ${fmt(s.rawOnset.median)} ms; release median ${fmt(s.stableRelease.median)} ms; missed ${s.missed}/${s.trials}.`,
-      consequence: status === 'pass' ? '' : status === 'warn' ? 'Roll lanterns slower (about 0.7x) and add more checkpoints.' : 'Too slow or shadows missed: try a wired connection, a faster camera mode, locked exposure; otherwise fall back to a single lane against the Ghost.' });
+    if (l.blindFrac > T.blindMaxFrac) add({ id: 'latency', title: 'Latency (display to camera to mask)', gate: true, status: 'skipped', summary: `Invalid run: ${pct(l.blindFrac)} of the test square cannot be measured (outside the camera's view, too dim, or under the page's own controls). Re-aim, recalibrate and repeat.` });
+    else if (s.aborted || s.trials < 3) add({ id: 'latency', title: 'Latency (display to camera to mask)', gate: true, status: 'skipped', summary: `Invalid run: ${s.aborted ? 'the test square was never clear (a hand, shadow or stuck mask was in it)' : `only ${s.trials} usable trials`}. Repeat with the beam clear.` });
+    else {
+      const cen = s.stableOnsetCensored;
+      const med = cen.median, p95 = cen.p95;
+      const missFrac = s.missed / s.trials, relFrac = s.missedRelease / s.trials;
+      let status = 'pass';
+      if (missFrac > T.latencyMissFailFrac || med > T.latencyMedianWarnMs || relFrac > T.releaseMissFailFrac) status = 'fail';
+      else if (s.missed > 0 || med > T.latencyMedianPassMs || p95 > T.latencyP95PassMs || s.missedRelease > 0 || s.contaminated > 0) status = 'warn';
+      add({ id: 'latency', title: 'Latency (display to camera to mask)', gate: true, status,
+        summary: `Median ${fmt(med)} ms, p95 ${fmt(p95)} ms (want <= ${T.latencyMedianPassMs} / ${T.latencyP95PassMs}; squares that were never noticed count as ${fmt(s.timeoutMs)} ms); raw detector median ${fmt(s.rawOnset.median)} ms; release median ${fmt(s.stableRelease.median)} ms; never noticed ${s.missed}/${s.trials}; shadow never cleared ${s.missedRelease}/${s.trials}${s.contaminated ? `; trials discarded because the square was not clear: ${s.contaminated}` : ''}.`,
+        consequence: status === 'pass' ? '' : status === 'warn' ? 'Roll lanterns slower (about 0.7x), add more checkpoints, and check why some squares were missed or stuck.' : 'Too slow, or shadows missed or stuck: try a wired connection, a faster camera mode, locked exposure; otherwise fall back to a single lane against the Ghost.' });
+    }
   }
 
-  for (const q of results.quiet || []) {
-    const worst = Math.max(...q.perMinHalf);
-    const status = worst <= T.phantomPerMinPerHalf ? 'pass' : 'fail';
-    add({ id: `quiet:${q.label}`, title: `Phantom shadows: ${q.label}`, gate: true, status,
-      summary: `${q.events.length} phantom blob${q.events.length === 1 ? '' : 's'} in ${fmt(q.durationS)} s (left ${fmt(q.perMinHalf[0], 1)}/min, right ${fmt(q.perMinHalf[1], 1)}/min; want <= ${T.phantomPerMinPerHalf}); peak ${fmt(q.peakCoverage * 100, 1)}% of the board.`,
-      consequence: status === 'pass' ? '' : 'Add a keep-out line to onboarding and a 5 s recalibrate; if it persists, vision cannot be trusted in this setup.' });
+  // ---- phantom shadows (two required runs)
+  for (const [key, label, title] of [['quietClean', LABELS.quietClean, 'Phantom shadows: clean room'], ['quietLantern', LABELS.quietLantern, 'Phantom shadows: lantern and people nearby']]) {
+    const q = (results.quiet || []).find((x) => x.label === label);
+    const id = `quiet:${label}`;
+    if (!q) { skip(id, title, true); continue; }
+    if (q.expectedTicks && q.ticks < q.expectedTicks * T.minSampleFrac) { add({ id, title, gate: true, status: 'skipped', summary: `Invalid run: only ${q.ticks} of about ${q.expectedTicks} camera samples were processed (page hidden, throttled or camera stalled). Repeat.` }); continue; }
+    const worst = Math.max(...q.perMinHalf), duty = Math.max(...(q.duty || [0, 0])), longest = Math.max(...(q.longest || [0, 0]));
+    const bad = worst > T.phantomPerMinPerHalf || duty > T.phantomDuty || longest > T.phantomLongestS;
+    const blind = q.ignoredFrac ? Math.max(...q.ignoredFrac) : 0;
+    add({ id, title, gate: true, status: bad ? 'fail' : 'pass',
+      summary: `${q.events.length} phantom appearance${q.events.length === 1 ? '' : 's'} in ${fmt(q.durationS)} s (left ${fmt(q.perMinHalf[0], 1)}/min, right ${fmt(q.perMinHalf[1], 1)}/min; want <= ${T.phantomPerMinPerHalf}); present ${pct(duty, 1)} of the time at most (want <= ${T.phantomDuty * 100}%); longest ${fmt(longest, 1)} s (want <= ${T.phantomLongestS}); peak ${pct(q.peakCoverage, 1)} of the board.${blind > T.ignoredWarnFrac ? ` WARNING: ${pct(blind)} of a lane was hidden under the page's own controls and not measured.` : ''}`,
+      consequence: bad ? 'Add a keep-out line to onboarding and a 5 s recalibrate; a ghost that stays or keeps returning means vision cannot be trusted in this setup.' : '' });
   }
-  if (!(results.quiet || []).length) add({ id: 'quiet', title: 'Phantom shadows', gate: true, status: 'skipped', summary: 'Not run.' });
 
-  for (const r of results.ring || []) {
-    const n = r.trials.length;
-    const ok = r.trials.filter((t) => t.success).length;
-    const frac = n ? ok / n : 0;
-    const status = frac >= T.ringPassFrac ? 'pass' : frac >= T.ringWarnFrac ? 'warn' : 'fail';
-    add({ id: `ring:${r.label}`, title: `Shadow fit: ${r.label}`, gate: true, status,
+  // ---- shadow fit (adult ring is a gate; the child-size ring informs)
+  for (const [key, label, title, gate] of [['ring', LABELS.ring, 'Shadow fit: ring (r=70)', true], ['ringSmall', LABELS.ringSmall, 'Shadow fit: small ring (r=42)', false]]) {
+    const r = (results.ring || []).find((x) => x.label === label);
+    const id = `ring:${label}`;
+    if (!r) { skip(id, title, gate); continue; }
+    if (r.blindFrac > T.blindMaxFrac) { add({ id, title, gate, status: 'skipped', summary: `Invalid run: ${pct(r.blindFrac)} of the ring cannot be measured (outside the camera's view, too dim, or under the page's own controls). Re-aim, recalibrate and repeat.` }); continue; }
+    if (r.neverClear > 0) { add({ id, title, gate, status: 'skipped', summary: `Invalid run: the ring was still covered when ${r.neverClear} ${r.neverClear === 1 ? 'try was' : 'tries were'} due to start (a shadow stuck on it, or a hand left in it). Clear the ring and repeat.` }); continue; }
+    const n = r.trials.length, ok = r.trials.filter((t) => t.success).length, frac = n ? ok / n : 0;
+    const status = frac >= T.ringPassFrac ? 'pass' : gate ? 'fail' : frac >= T.ringSmallWarnFrac ? 'warn' : 'fail';
+    add({ id, title, gate, status,
       summary: `Fitted ${ok} of ${n} within ${T.ringTimeoutS} s (want ${fmt(T.ringPassFrac * 100)}%+); forming time median ${fmt(r.summary.median, 1)} s; best overlap ${fmt(Math.max(0, ...r.trials.map((t) => t.peakIoU)) * 100)}%.`,
-      consequence: status === 'pass' ? '' : 'Shadows are not precise enough at this target size: use bigger targets, a closer camera or a brighter, darker-room setup.' });
+      consequence: status === 'pass' ? '' : gate ? 'Below the design bar: recalibrate and run it once more; if it stays below, the design fallback is a single lane against the Ghost, then human-judged Charades.' : 'Child-size shadows are not resolved reliably: use bigger targets or a closer camera.' });
+    const timeouts = n - ok;
     if (r.summary.n >= 5) {
       const s = r.summary.sd;
-      add({ id: `noise:${r.label}`, title: `Measurement noise: ${r.label}`, status: s <= T.noiseSdPassS ? 'pass' : 'warn',
-        summary: `Forming time sd ${fmt(s, 2)} s over ${r.summary.n} repeats (want <= ${T.noiseSdPassS} s).`,
+      add({ id: `noise:${label}`, title: `Measurement noise: ${label}`, status: s <= T.noiseSdPassS ? 'pass' : 'warn',
+        summary: `Forming time sd ${fmt(s, 2)} s over ${r.summary.n} successful repeats (want <= ${T.noiseSdPassS} s)${timeouts ? `; ${timeouts} timed out and are not in this figure, so the real spread is larger` : ''}.`,
         consequence: s <= T.noiseSdPassS ? '' : 'Too noisy to show before/after skill gains: keep the Light Check as a rating only.' });
-    } else {
-      add({ id: `noise:${r.label}`, title: `Measurement noise: ${r.label}`, status: 'info', summary: `Only ${r.summary.n} successful repeats, too few for a noise estimate.` });
-    }
+    } else add({ id: `noise:${label}`, title: `Measurement noise: ${label}`, status: 'info', summary: `Only ${r.summary.n} successful repeats, too few for a noise estimate.` });
   }
-  if (!(results.ring || []).length) add({ id: 'ring', title: 'Shadow fit', gate: true, status: 'skipped', summary: 'Not run.' });
 
+  // ---- bodies in the beam (information)
   const b = results.beam;
-  if (b) {
+  if (!b) skip('beam', 'Bodies in the beam (area per lane)', false);
+  else {
     const over = b.peakHalf.map((x) => x > T.areaCap);
-    add({ id: 'beam', title: 'Bodies in the beam (area per lane)', status: 'info',
-      summary: `Peak coverage left ${fmt(b.peakHalf[0] * 100)}%, right ${fmt(b.peakHalf[1] * 100)}% (design cap ${T.areaCap * 100}% per lane${over.some(Boolean) ? '; the cap would have triggered' : ''}); most separate shadows at once: ${b.maxBlobs}.` });
+    const blind = b.ignoredFrac ? Math.max(...b.ignoredFrac) : 0;
+    add({ id: 'beam', title: 'Bodies in the beam (area per lane)', status: blind > T.ignoredWarnFrac ? 'warn' : 'info',
+      summary: `Peak coverage left ${pct(b.peakHalf[0])}, right ${pct(b.peakHalf[1])} (design cap ${T.areaCap * 100}% per lane${over.some(Boolean) ? '; the cap would have triggered' : ''}); most separate shadows at once: ${b.maxBlobs}.${blind > T.ignoredWarnFrac ? ` WARNING: ${pct(blind)} of a lane was hidden under the page's own controls, so these figures are too low.` : ''}` });
   }
 
+  // ---- recalibration
   const rc = results.recal;
-  if (rc) {
-    const status = !rc.ok ? 'fail' : rc.ms <= T.recalPassMs ? 'pass' : rc.ms <= T.recalWarnMs ? 'warn' : 'fail';
+  if (!rc) skip('recal', 'Recalibration after a bump', false);
+  else if (!rc.ok) add({ id: 'recal', title: 'Recalibration after a bump', status: 'fail', summary: `Recalibration FAILED (${rc.error || 'unknown'}) after ${fmt(rc.ms / 1000, 1)} s: the picture could not be found again.`, consequence: 'After a bump the picture left the camera view or lost contrast: players would have to re-aim by hand.' });
+  else {
+    const status = rc.ms <= T.recalPassMs ? 'pass' : rc.ms <= T.recalWarnMs ? 'warn' : 'fail';
     add({ id: 'recal', title: 'Recalibration after a bump', status,
-      summary: `${rc.ok ? 'Recovered' : 'Failed'} in ${fmt(rc.ms / 1000, 1)} s (want <= ${T.recalPassMs / 1000} s); picture moved ${fmt(rc.shiftPx, 1)} camera px.`,
-      consequence: status === 'pass' ? '' : 'Players will wait too long after bumping the projector: shorten the black/white settle times.' });
+      summary: `Recovered in ${fmt(rc.ms / 1000, 1)} s (want <= ${T.recalPassMs / 1000} s; this is the black/white flash and settle time only, the countdown and tapping accept add a few seconds in a real game); picture moved ${rc.shiftPx === null || rc.shiftPx === undefined ? 'n/a' : `${fmt(rc.shiftPx, 1)} camera px`}${rc.shiftPx !== null && rc.shiftPx !== undefined && rc.shiftPx < 1.5 ? ' (the projector was probably not actually bumped)' : ''}.`,
+      consequence: status === 'pass' ? '' : 'Players would wait too long after bumping the projector: shorten the black/white settle times.' });
   }
 
+  // ---- connectivity
   const k = results.connectivity;
-  if (k) {
-    if (!k.phones) add({ id: 'connectivity', title: 'Connectivity', status: 'skipped', summary: 'No phones joined the probe.' });
-    else {
-      const status = k.stalledFrac <= T.stallMaxFrac ? 'pass' : 'fail';
-      add({ id: 'connectivity', title: 'Connectivity (phones to relay)', status,
-        summary: `${k.phones} phone${k.phones === 1 ? '' : 's'}: ${fmt(k.stalledFrac * 100)}% of ${T.stallWindowS} s windows stalled (> ${T.stallRttMs} ms; want <= ${T.stallMaxFrac * 100}%); median RTT ${fmt(median(k.perPhone.map((p) => p.medianRtt)))} ms; worst ${fmt(Math.max(...k.perPhone.map((p) => p.worst ?? 0)))} ms.`,
-        consequence: status === 'pass' ? '' : 'Mobile data at this spot stalls too often: an offline / local-network mode becomes a must-build.' });
-    }
+  if (!k) skip('connectivity', 'Connectivity (phones to relay)', false);
+  else if (!k.phones) skip('connectivity', 'Connectivity (phones to relay)', false, `No phones stayed connected for the probe${k.dropped ? ` (${k.dropped} dropped out)` : ''}.`);
+  else {
+    let status = k.stalledFrac <= T.stallMaxFrac ? 'pass' : 'fail';
+    const notes = [];
+    if (status === 'pass' && k.phones < T.connPhonesMin) { status = 'warn'; notes.push(`only ${k.phones} phone${k.phones === 1 ? '' : 's'} tested; the design condition is up to ${T.connPhonesDesign} on one network`); }
+    if (k.lan) { if (status === 'pass') status = 'warn'; notes.push(`measured over a local network (${k.relayHost || 'LAN'}), which says nothing about mobile data at camp: repeat with phones on mobile data against an internet address`); }
+    if (k.dropped) { if (status === 'pass') status = 'warn'; notes.push(`${k.dropped} phone${k.dropped === 1 ? '' : 's'} dropped out during the probe`); }
+    const slept = k.perPhone.reduce((a, p) => a + (p.sleptWindows || 0), 0);
+    if (slept) notes.push(`${slept} window${slept === 1 ? '' : 's'} excluded because the phone's screen was off`);
+    add({ id: 'connectivity', title: 'Connectivity (phones to relay)', status,
+      summary: `${k.phones} phone${k.phones === 1 ? '' : 's'} via ${k.relayHost || 'the relay'}: ${pct(k.stalledFrac)} of ${T.stallWindowS} s windows stalled (> ${T.stallRttMs} ms; want <= ${T.stallMaxFrac * 100}%); median RTT ${fmt(median(k.perPhone.filter((p) => !p.dropped).map((p) => p.medianRtt)))} ms; worst ${fmt(Math.max(0, ...k.perPhone.map((p) => p.worst ?? 0)))} ms.${notes.length ? ` Note: ${notes.join('; ')}.` : ''}`,
+      consequence: status === 'fail' ? 'Mobile data at this spot stalls too often: an offline / local-network mode becomes a must-build.' : '' });
   }
-  for (const e of results.errors || []) rows.push({ id: 'error', title: 'Internal error', gate: true, status: 'fail', summary: String(e), consequence: 'The test page hit an error: send this report so it can be fixed.' });
+
+  // ---- the page itself broke: a separate "invalid" verdict, never confused with a hardware result
+  const errs = [...new Set(results.errors || [])].slice(0, 5);
+  for (const e of errs) rows.push({ id: 'error', title: 'Page error', gate: true, status: 'invalid', summary: String(e), consequence: 'The test page hit an error, so this run is not a valid measurement. Send this report so it can be fixed.' });
   return rows;
 }
 
+/** GO / CAUTION / NO-GO / INCOMPLETE / INVALID RUN. A failed gate is decisive even when others are not run yet. */
 export function overall(rows) {
+  if (rows.some((r) => r.id === 'error')) return 'INVALID RUN';
   const gates = rows.filter((r) => r.gate);
-  if (!gates.length || gates.some((r) => r.status === 'skipped')) return 'INCOMPLETE';
   if (gates.some((r) => r.status === 'fail')) return 'NO-GO';
+  if (!gates.length || gates.some((r) => r.status === 'skipped')) return 'INCOMPLETE';
   if (gates.some((r) => r.status === 'warn')) return 'CAUTION';
   return 'GO';
 }
 
-const ICON = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', info: 'INFO', skipped: 'SKIP' };
+/** Titles of rows that were not run (or were invalid). */
+export const notRun = (rows) => rows.filter((r) => r.status === 'skipped').map((r) => r.title);
+/** Non-gate rows that failed or warned: they do not change the headline but change the plan. */
+export const attention = (rows) => rows.filter((r) => !r.gate && (r.status === 'fail' || r.status === 'warn')).map((r) => `${r.title}: ${r.status.toUpperCase()}${r.consequence ? ` (${r.consequence})` : ''}`);
+
+const ICON = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', info: 'INFO', skipped: 'SKIP', invalid: 'ERR ' };
 
 export function formatReport({ meta, results, rows }) {
   const out = [];
   out.push('UMBRA P0 REAL-PROJECTOR REPORT');
   out.push(`Overall: ${overall(rows)}`);
+  const nr = notRun(rows);
+  if (nr.length) out.push(`Not run or invalid: ${nr.join('; ')}`);
+  const at = attention(rows);
+  if (at.length) out.push(`Needs attention: ${at.join(' | ')}`);
+  if (meta.flags && meta.flags.length) out.push(`NOT A VALID MEASUREMENT: ${meta.flags.join('; ')}`);
   out.push(`When: ${meta.when}    Mode: ${meta.sim ? 'SIMULATOR (not real hardware)' : 'real camera'}`);
   out.push('');
   for (const r of rows) {

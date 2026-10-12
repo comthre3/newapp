@@ -10,13 +10,19 @@ export class Stage {
     this.flatColor = null;
     this.onResize = () => {};
     this.resize();
-    window.addEventListener('resize', () => { this.resize(); this.onResize(); });
+    const changed = () => { this.resize(); this.onResize(); };
+    window.addEventListener('resize', changed);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', changed);
   }
 
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    let w = Math.max(320, Math.round(window.innerWidth * dpr));
-    let h = Math.max(180, Math.round(window.innerHeight * dpr));
+    // use the box the canvas is really drawn in (CSS size), not innerWidth/innerHeight: on phones with a
+    // collapsing address bar the two differ, and the picture the camera sees would no longer match the bitmap
+    const box = this.canvas.getBoundingClientRect();
+    const cssW = box.width || window.innerWidth, cssH = box.height || window.innerHeight;
+    let w = Math.max(320, Math.round(cssW * dpr));
+    let h = Math.max(180, Math.round(cssH * dpr));
     const cap = 1600;
     if (w > cap) { h = Math.round((h * cap) / w); w = cap; }
     this.canvas.width = w;

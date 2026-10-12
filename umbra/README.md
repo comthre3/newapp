@@ -137,9 +137,12 @@ inputs are validated and rate-limited, names are sanitised, ≤ 8 players / 200 
 ## Tests
 
 ```bash
-npm test        # 39 unit/integration tests: vision, physics & level solvability, relay server
+npm test        # 68 unit/integration tests: vision, physics & level solvability, relay server, projector-test logic
 npm run e2e     # headless Chromium: host + 2 phones, full level clear, camera error paths; screenshots → test/out/
+npm run e2e:p0  # the projector test page in the simulator: happy path plus 14 ways a real run goes wrong
 ```
+
+The real-projector check (`/p0.html`) is documented in [docs/P0_TEST.md](docs/P0_TEST.md).
 
 * **Vision** is tested against the simulator: corner recovery (< 3 px), shadow IoU ≥ 0.8 for hands,
   ramps and multi-object scenes, bright rooms, auto-exposure drift, error messages.

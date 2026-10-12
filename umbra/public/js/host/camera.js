@@ -47,6 +47,9 @@ export class CameraSource {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+    const track = this.stream.getVideoTracks()[0];
+    this.ended = false;
+    if (track) track.addEventListener('ended', () => { this.ended = true; });
     this.startFrameStats();
     return this;
   }
@@ -111,9 +114,19 @@ export class CameraSource {
         fs.lat.push(now - meta.captureTime);
         if (fs.lat.length > 300) fs.lat.shift();
       }
+      fs.lastAt = performance.now();
       if (this.fs === fs && this.video) this.video.requestVideoFrameCallback(cb);
     };
     v.requestVideoFrameCallback(cb);
+  }
+
+  /** { ok, reason }: false when the camera stopped, was unplugged, or stopped delivering frames. */
+  health() {
+    const track = this.stream && this.stream.getVideoTracks()[0];
+    if (!track || this.ended || track.readyState === 'ended') return { ok: false, reason: 'the camera stopped or was unplugged' };
+    const fs = this.fs;
+    if (fs && fs.supported && fs.lastAt && performance.now() - fs.lastAt > 1500 && !(this.video && this.video.paused)) return { ok: false, reason: 'the camera stopped delivering pictures' };
+    return { ok: true, reason: '' };
   }
 
   frameStats() {

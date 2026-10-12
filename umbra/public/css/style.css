@@ -13,7 +13,7 @@ button { font: inherit; }
 
 /* ===================================================== host (projected) */
 body.host { background: #fff; color: var(--ink); overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
-body.host #stage, body.host #overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+body.host #stage, body.host #overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
 body.host #overlay { pointer-events: none; }
 body.host.sim #overlay, body.host.adjusting #overlay { pointer-events: auto; touch-action: none; }
 body.flat .ui { display: none !important; }       /* while the projector floods black/white */
@@ -154,8 +154,25 @@ body.pad {
 .p0report .badge.warn { background: #fff0cc; color: #8a5a00; }
 .p0report .badge.fail { background: #ffdede; color: #b00020; }
 .p0report .badge.info, .p0report .badge.skipped { background: var(--blue-soft); color: var(--ink); }
+.p0report .badge.invalid { background: #ffdede; color: #b00020; }
 .p0report .rep-title { font-weight: 800; }
 .p0report .rep-conseq { color: #8a5a00; }
 .p0report .overall { font-size: 22px; font-weight: 900; margin: 0 0 8px; }
 .p0report .overall.go { color: #00703a; } .p0report .overall.nogo { color: #b00020; } .p0report .overall.caution { color: #8a5a00; }
 @media (max-height: 560px) { .p0panel p { font-size: 13px; } }
+
+/* while a test measures, the control strip shrinks to one row at the very bottom so it hides almost none of the wall */
+.p0panel.slim { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; width: auto; max-width: 96vw; padding: 5px 10px; border-radius: 12px; border-width: 2px; bottom: 6px; }
+.p0panel.slim #p0text { display: none; }
+.p0panel.slim .p0head { flex: 1 1 auto; white-space: nowrap; }
+.p0panel.slim .row { margin: 0; flex-wrap: nowrap; }
+.p0panel.slim .row button { padding: 5px 12px; white-space: nowrap; }
+.p0panel.slim .p0head { gap: 10px; }
+body.sim .p0panel.slim { bottom: 112px; }
+.p0notes { display: grid; gap: 8px; margin: 6px 0; }
+.p0notes input, .p0notes select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px solid var(--blue-soft); background: #fff; color: var(--ink); width: 100%; }
+.p0report .flag { background: #ffdede; color: #b00020; font-weight: 800; padding: 8px 10px; border-radius: 10px; margin: 0 0 8px; }
+.p0report .note { font-size: 13px; margin: 0 0 6px; }
+
+.p0panel .notice { color: #b00020; font-weight: 800; }
+.p0panel .row button.warn::before { content: "! "; }
