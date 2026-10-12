@@ -136,3 +136,26 @@ body.pad {
   button { padding: 8px 14px; }
   .lobby { gap: 4px 22px; }
 }
+
+/* ===================================================== projector test (p0) */
+.p0panel { width: min(900px, 96vw); max-width: none; }
+.p0panel .p0head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.p0panel #p0step { color: var(--blue); font-size: 18px; }
+.p0panel p { margin: 4px 0 8px; }
+.p0how { text-align: left; margin: 0 0 12px; padding-left: 20px; font-size: 14px; }
+.p0how li { margin: 4px 0; }
+.p0panel .row button { padding: 8px 14px; font-size: 14px; }
+.p0panel .row button.done::before { content: "✓ "; }
+.p0panel .row button.bad::before { content: "✗ "; }
+.p0report { width: min(860px, 96vw); max-width: none; }
+.p0report .rep-row { display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--blue-soft); font-size: 13px; }
+.p0report .badge { font-weight: 900; font-size: 12px; text-align: center; padding: 3px 0; border-radius: 8px; align-self: start; }
+.p0report .badge.pass { background: #d6ffe9; color: #00703a; }
+.p0report .badge.warn { background: #fff0cc; color: #8a5a00; }
+.p0report .badge.fail { background: #ffdede; color: #b00020; }
+.p0report .badge.info, .p0report .badge.skipped { background: var(--blue-soft); color: var(--ink); }
+.p0report .rep-title { font-weight: 800; }
+.p0report .rep-conseq { color: #8a5a00; }
+.p0report .overall { font-size: 22px; font-weight: 900; margin: 0 0 8px; }
+.p0report .overall.go { color: #00703a; } .p0report .overall.nogo { color: #b00020; } .p0report .overall.caution { color: #8a5a00; }
+@media (max-height: 560px) { .p0panel p { font-size: 13px; } }

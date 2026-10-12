@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#ffffff">
+  <title>Umbra Projector Test</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="host p0">
+  <canvas id="stage"></canvas>
+  <canvas id="overlay"></canvas>
+
+  <!-- Setup -->
+  <section id="p0setup" class="ui card center">
+    <h1 style="font-size:30px">PROJECTOR TEST</h1>
+    <p class="tag">A 10-minute check that real shadows work in your setup. It measures delay, phantom shadows, shadow-fitting accuracy and connectivity, then gives you a report to send back.</p>
+    <ol class="p0how">
+      <li>Point the projector at a bedsheet, wall or tent. Dim the room if you can.</li>
+      <li>Aim the camera so the <b>whole bright picture</b> is in view, steady, off to one side.</li>
+      <li>Start the camera, calibrate, then run the guided test. Follow the big text on the wall.</li>
+    </ol>
+    <div class="row">
+      <label class="select">Camera <select id="camsel"><option value="">Rear / default camera</option></select></label>
+    </div>
+    <div class="row">
+      <button id="btn-cam" class="primary">Start camera</button>
+      <button id="btn-sim" class="ghost">Dry run in the simulator</button>
+    </div>
+    <div id="setupmsg" class="status"></div>
+    <p class="small">Needs https:// or http://localhost for the camera. Details: docs/P0_TEST.md</p>
+  </section>
+
+  <!-- Control strip (always inside the detector's ignore area) -->
+  <section id="p0panel" class="ui panel bottom p0panel" hidden>
+    <div class="p0head"><b id="p0step">…</b><span id="p0count" class="small"></span></div>
+    <p id="p0text"></p>
+    <div id="p0buttons" class="row"></div>
+  </section>
+
+  <!-- Report -->
+  <section id="p0report" class="ui card center p0report" hidden>
+    <h2 id="rep-title">Report</h2>
+    <div class="row">
+      <button id="rep-copy" class="primary">Copy report</button>
+      <button id="rep-json" class="ghost">Download JSON</button>
+      <button id="rep-close" class="ghost">Back</button>
+    </div>
+    <div id="rep-msg" class="status"></div>
+    <div id="rep-rows"></div>
+  </section>
+
+  <!-- Simulator toolbar -->
+  <section id="simbar" class="ui simbar" hidden>
+    <b>Simulator</b>
+    <button data-tool="hand" class="tool on">Hand</button>
+    <button data-tool="bar" class="tool">Bar</button>
+    <button data-tool="block" class="tool">Block</button>
+    <button id="s-big" class="tool" aria-label="bigger">＋</button>
+    <button id="s-small" class="tool" aria-label="smaller">－</button>
+    <button id="s-clear" class="tool">Clear</button>
+    <span class="small">click = place · drag = move · wheel = rotate · right-click = delete</span>
+  </section>
+
+  <aside id="debug" class="ui debug" hidden>
+    <div id="dbg-text"></div>
+    <canvas id="dbg-cam" width="160" height="90"></canvas>
+    <canvas id="dbg-mask" width="160" height="90"></canvas>
+  </aside>
+
+  <div id="toast" class="ui toast" hidden></div>
+  <script type="module" src="/js/p0/app.js"></script>
+</body>
+</html>

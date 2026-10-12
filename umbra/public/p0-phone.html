@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0d1c">
+  <title>Umbra Connection Test</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="pad">
+  <header>
+    <span class="dot" id="dot"></span>
+    <span class="who" id="who">Connection test</span>
+    <span class="pill" id="room">----</span>
+    <span class="pill" id="conn">connecting</span>
+  </header>
+  <div class="banner">
+    <b>Keep this screen on</b>
+    <span>Leave this page open and in front. The big screen is measuring how steady your connection to the game is.</span>
+  </div>
+  <main style="justify-content:center;align-items:center;text-align:center">
+    <div style="font-size:14px;color:var(--dim)">Round-trip time</div>
+    <div id="rtt" style="font-size:76px;font-weight:900;line-height:1">…</div>
+    <div style="color:var(--dim)">ms (median, last second)</div>
+    <div id="detail" style="margin-top:18px;font-size:15px;color:var(--dim);white-space:pre-line"></div>
+  </main>
+  <footer><button id="b-stop" style="display:none">Stop</button></footer>
+  <script type="module" src="/js/p0/phone.js"></script>
+</body>
+</html>
